@@ -21,7 +21,7 @@ use crate::search_engine::SearchEngine;
 #[cfg(feature = "pdf")]
 use crate::search_engine::SearchLine;
 use crate::settings;
-use crate::system_command::{RealSystemCommandExecutor, SystemCommandExecutor};
+use crate::system_command::{RealSystemCommandExecutor, SystemCommandExecutor, shell_command};
 use crate::table_of_contents::TocItem;
 use crate::theme::{current_theme, current_theme_name, theme_background_for};
 use crate::types::LinkInfo;
@@ -859,20 +859,21 @@ impl App {
             return;
         }
 
-        // Shell-escape the selected text with single quotes
-        let escaped = trimmed.replace('\'', "'\\''");
+        let escaped = crate::system_command::shell_escape(trimmed);
         let command = if command_template.contains("{}") {
             command_template.replace("{}", &escaped)
         } else {
-            format!("{} '{}'", command_template, escaped)
+            format!(
+                "{} {}",
+                command_template,
+                crate::system_command::shell_quote(trimmed)
+            )
         };
 
         let display = self.settings.load().lookup_display;
         match display {
             settings::LookupDisplay::FireAndForget => {
-                match std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&command)
+                match shell_command(&command)
                     .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -896,10 +897,7 @@ impl App {
                     trimmed.to_string()
                 };
 
-                let result = std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&command)
-                    .output();
+                let result = shell_command(&command).output();
 
                 let popup_result = match result {
                     Ok(output) => {
@@ -7526,9 +7524,7 @@ impl App {
                 .replace("{line}", &line.to_string())
                 .replace("{column}", "0");
             log::info!("SyncTeX inverse: launching editor: {cmd}");
-            match std::process::Command::new("sh")
-                .arg("-c")
-                .arg(&cmd)
+            match shell_command(&cmd)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -7644,9 +7640,7 @@ impl App {
                 .replace("{line}", "1")
                 .replace("{column}", "0");
             log::info!("SyncTeX test: launching editor: {cmd}");
-            match std::process::Command::new("sh")
-                .arg("-c")
-                .arg(&cmd)
+            match shell_command(&cmd)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::piped())

@@ -183,6 +183,54 @@ impl RealSystemCommandExecutor {
     }
 }
 
+/// Build a command that runs `command_line` through the platform shell.
+///
+/// On Windows, `/S` makes cmd strip exactly the outer quote pair and take the
+/// rest verbatim, and `raw_arg` bypasses the MSVCRT-style quoting std would
+/// otherwise apply — cmd.exe does not follow those rules.
+#[cfg(windows)]
+pub fn shell_command(command_line: &str) -> Command {
+    use std::os::windows::process::CommandExt;
+
+    let mut command = Command::new("cmd");
+    command
+        .arg("/S")
+        .arg("/C")
+        .raw_arg(format!("\"{command_line}\""));
+    command
+}
+
+#[cfg(not(windows))]
+pub fn shell_command(command_line: &str) -> Command {
+    let mut command = Command::new("sh");
+    command.arg("-c").arg(command_line);
+    command
+}
+
+/// Escape `text` for substitution into a quoted placeholder in a user-supplied
+/// command template. cmd.exe escapes an embedded double quote by doubling it;
+/// sh has to close, escape, and reopen the single quote.
+#[cfg(windows)]
+pub fn shell_escape(text: &str) -> String {
+    text.replace('"', "\"\"")
+}
+
+#[cfg(not(windows))]
+pub fn shell_escape(text: &str) -> String {
+    text.replace('\'', "'\\''")
+}
+
+/// Quote `text` as a standalone argument appended to a command line.
+#[cfg(windows)]
+pub fn shell_quote(text: &str) -> String {
+    format!("\"{}\"", shell_escape(text))
+}
+
+#[cfg(not(windows))]
+pub fn shell_quote(text: &str) -> String {
+    format!("'{}'", shell_escape(text))
+}
+
 #[cfg(any(test, feature = "test-utils"))]
 pub struct MockSystemCommandExecutor {
     pub executed_commands: std::cell::RefCell<Vec<String>>,
