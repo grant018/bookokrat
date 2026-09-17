@@ -220,6 +220,29 @@ pub fn shell_escape(text: &str) -> String {
     text.replace('\'', "'\\''")
 }
 
+/// Replace ASCII double quotes with typographic ones.
+///
+/// A Windows command line is parsed twice — by cmd, then by the target's own
+/// argument parser — and an ASCII double quote does not survive both: the
+/// MSVCRT doubling that `shell_escape` applies is correct for an ordinary
+/// executable but ignored by `powershell.exe -File`, which cuts the value
+/// short at the quote. Curly quotes are inert to both parsers and read the
+/// same in a lookup.
+#[cfg(windows)]
+pub fn soften_quotes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut opening = true;
+    for ch in text.chars() {
+        if ch == '"' {
+            out.push(if opening { '\u{201C}' } else { '\u{201D}' });
+            opening = !opening;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 /// Quote `text` as a standalone argument appended to a command line.
 #[cfg(windows)]
 pub fn shell_quote(text: &str) -> String {

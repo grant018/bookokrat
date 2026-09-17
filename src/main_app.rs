@@ -911,6 +911,8 @@ impl App {
         // that are an artefact of display rather than part of the text. They also
         // truncate the command on Windows, where cmd ends a command at a newline.
         let normalized = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
+        #[cfg(windows)]
+        let normalized = crate::system_command::soften_quotes(&normalized);
 
         let escaped = crate::system_command::shell_escape(&normalized);
         let command = if command_template.contains("{}") {
