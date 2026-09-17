@@ -1,10 +1,11 @@
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, RwLock, RwLockWriteGuard};
 
-pub const CURRENT_VERSION: u32 = 3;
+pub const CURRENT_VERSION: u32 = 4;
 const SETTINGS_FILENAME: &str = "config.yaml";
 const LEGACY_SETTINGS_FILENAME: &str = ".bookokrat_settings.yaml";
 const APP_NAME: &str = "bookokrat";
@@ -58,6 +59,14 @@ pub enum LookupDisplay {
     Popup,
     /// Run command and forget (just show notification)
     FireAndForget,
+}
+
+/// A named lookup target: its own command template and display mode.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LookupTarget {
+    pub command: String,
+    #[serde(default)]
+    pub display: LookupDisplay,
 }
 
 /// PDF render mode for terminals with Kitty graphics protocol
@@ -195,6 +204,11 @@ pub struct Settings {
     #[serde(default)]
     pub lookup_display: LookupDisplay,
 
+    /// Named lookup targets keyed by name (dictionary, translate, ...).
+    /// Each entry is bound to its own key under the Space+l prefix.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lookups: BTreeMap<String, LookupTarget>,
+
     /// Editor command for SyncTeX inverse search (PDF → source).
     /// Placeholders: {file}, {line}, {column}
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -240,6 +254,7 @@ impl Default for Settings {
             book_sort_order: BookSortOrder::default(),
             lookup_command: None,
             lookup_display: LookupDisplay::default(),
+            lookups: BTreeMap::new(),
             nav_panel_width: None,
             synctex_editor: None,
         }
@@ -492,6 +507,21 @@ fn migrate_settings(settings: &mut Settings, file_content: &str) -> String {
         }
     }
 
+    // v3 -> v4: insert named lookup targets template before custom_themes
+    if settings.version < 4 && !content.contains("# Lookup Targets") {
+        let insert_text = format!("\n{}", LOOKUP_TARGETS_TEMPLATE);
+        if let Some(pos) = content.find("# Custom Themes") {
+            let insert_pos = content[..pos]
+                .rfind("\n# ====")
+                .map(|p| p + 1)
+                .unwrap_or(pos);
+            content.insert_str(insert_pos, &insert_text);
+        } else if let Some(pos) = content.find("custom_themes:") {
+            content.insert_str(pos, &insert_text);
+        } else {
+            content.push_str(&insert_text);
+        }
+    }
     settings.version = CURRENT_VERSION;
     content
 }
@@ -803,6 +833,8 @@ fn generate_settings_yaml(settings: &Settings) -> String {
     }
     content.push('\n');
 
+    content.push_str(LOOKUP_TARGETS_TEMPLATE);
+
     content.push_str(CUSTOM_THEMES_TEMPLATE);
 
     if !settings.custom_themes.is_empty() {
@@ -862,6 +894,32 @@ const CUSTOM_THEMES_TEMPLATE: &str = r#"# ======================================
 #     base0D: "7E9CD8"    # Blue (links)
 #     base0E: "957FB8"    # Purple (keywords)
 #     base0F: "D27E99"    # Brown/Pink
+
+"#;
+
+const LOOKUP_TARGETS_TEMPLATE: &str = r#"# ============================================================================
+# Lookup Targets
+# ============================================================================
+# Named lookup targets, each bound to its own key under the Space+l prefix:
+#
+#   Space+l l   lookup_command above (the generic lookup)
+#   Space+l d   dictionary
+#   Space+l t   translate
+#   Space+l w   wikipedia
+#   Space+l g   google
+#   Space+l c   claude
+#
+# Each target takes a command (with {} for the selected text) and an optional
+# display mode (popup or fire_and_forget, defaulting to popup). A key whose
+# target is not configured below reports that it is unset.
+#
+# lookups:
+#   dictionary:
+#     command: "open 'https://www.merriam-webster.com/dictionary/{}'"
+#     display: fire_and_forget
+#   google:
+#     command: "open 'https://www.google.com/search?q={}'"
+#     display: fire_and_forget
 
 "#;
 
@@ -1064,7 +1122,7 @@ my_custom_flag: true
         assert!(updated.contains("my_custom_flag: true"));
         assert!(updated.contains("theme: \"New Theme\""));
         assert!(updated.contains("margin: 7"));
-        assert!(updated.contains("version: 3"));
+        assert!(updated.contains(&format!("version: {CURRENT_VERSION}")));
     }
 
     #[test]
@@ -1078,7 +1136,7 @@ my_custom_flag: true
         let updated = update_settings_values(existing, &settings);
 
         assert!(updated.contains("lookup_command: 'dict {}'"));
-        assert!(updated.contains("version: 3"));
+        assert!(updated.contains(&format!("version: {CURRENT_VERSION}")));
         assert!(updated.contains("theme: \"Oceanic Next\""));
         assert!(updated.contains("book_sort_order: by_name"));
     }

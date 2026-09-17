@@ -852,7 +852,55 @@ impl App {
             );
             return;
         };
+        let display = self.settings.load().lookup_display;
+        self.run_lookup(&command_template, display, selected_text);
+    }
 
+    /// Resolve the active selection, warning with `key_hint` when there is none.
+    fn lookup_selection_or_warn(&mut self, key_hint: &str) -> Option<String> {
+        let selected = if self.is_pdf_mode() {
+            #[cfg(feature = "pdf")]
+            {
+                self.pdf_reader.as_ref().and_then(|r| r.get_selected_text())
+            }
+            #[cfg(not(feature = "pdf"))]
+            {
+                None
+            }
+        } else {
+            self.text_reader.get_selected_text()
+        };
+
+        match selected {
+            Some(text) if !text.trim().is_empty() => Some(text),
+            _ => {
+                self.show_info(format!(
+                    "No text selected. Select text first, then press {key_hint}."
+                ));
+                None
+            }
+        }
+    }
+
+    fn dispatch_named_lookup(&mut self, name: &str, key_hint: &str) -> bool {
+        if let Some(text) = self.lookup_selection_or_warn(key_hint) {
+            let target = self.settings.load().lookups.get(name).cloned();
+            match target {
+                Some(target) => self.run_lookup(&target.command, target.display, &text),
+                None => self.show_info(format!(
+                    "No '{name}' lookup configured. Add it under `lookups:` in settings (Space+s)."
+                )),
+            }
+        }
+        true
+    }
+
+    fn run_lookup(
+        &mut self,
+        command_template: &str,
+        display: settings::LookupDisplay,
+        selected_text: &str,
+    ) {
         let trimmed = selected_text.trim();
         if trimmed.is_empty() {
             self.show_info("No text selected");
@@ -870,7 +918,6 @@ impl App {
             )
         };
 
-        let display = self.settings.load().lookup_display;
         match display {
             settings::LookupDisplay::FireAndForget => {
                 match shell_command(&command)
@@ -5295,29 +5342,16 @@ impl App {
                 true
             }
             Action::LookupSelection => {
-                let selected = if self.is_pdf_mode() {
-                    #[cfg(feature = "pdf")]
-                    {
-                        self.pdf_reader.as_ref().and_then(|r| r.get_selected_text())
-                    }
-                    #[cfg(not(feature = "pdf"))]
-                    {
-                        None
-                    }
-                } else {
-                    self.text_reader.get_selected_text()
-                };
-
-                match selected {
-                    Some(text) if !text.trim().is_empty() => {
-                        self.execute_lookup_command(&text);
-                    }
-                    _ => {
-                        self.show_info("No text selected. Select text first, then press Space+l.");
-                    }
+                if let Some(text) = self.lookup_selection_or_warn("Space+l l") {
+                    self.execute_lookup_command(&text);
                 }
                 true
             }
+            Action::LookupDictionary => self.dispatch_named_lookup("dictionary", "Space+l d"),
+            Action::LookupTranslate => self.dispatch_named_lookup("translate", "Space+l t"),
+            Action::LookupWikipedia => self.dispatch_named_lookup("wikipedia", "Space+l w"),
+            Action::LookupGoogle => self.dispatch_named_lookup("google", "Space+l g"),
+            Action::LookupClaude => self.dispatch_named_lookup("claude", "Space+l c"),
             Action::ResetNavPanelWidth => {
                 self.nav_panel_width_override = None;
                 self.settings

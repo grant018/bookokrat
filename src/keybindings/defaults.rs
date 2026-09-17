@@ -133,7 +133,12 @@ fn global_specifics(keymap: &mut Keymap) {
     bind!(ctx, "<Space>D" => Action::TogglePdfPageLayout);
     bind!(ctx, "<Space>S" => Action::TogglePdfRenderMode);
     bind!(ctx, "<Space>g" => Action::GoToPage);
-    bind!(ctx, "<Space>l" => Action::LookupSelection);
+    bind!(ctx, "<Space>ll" => Action::LookupSelection);
+    bind!(ctx, "<Space>ld" => Action::LookupDictionary);
+    bind!(ctx, "<Space>lt" => Action::LookupTranslate);
+    bind!(ctx, "<Space>lw" => Action::LookupWikipedia);
+    bind!(ctx, "<Space>lg" => Action::LookupGoogle);
+    bind!(ctx, "<Space>lc" => Action::LookupClaude);
     bind!(ctx, "<Space><lt>" => Action::ResetNavPanelWidth);
     bind!(ctx, "<Space><gt>" => Action::ResetNavPanelWidth);
     bind!(ctx, "<C-l>" => Action::ForceRedraw);
