@@ -907,14 +907,19 @@ impl App {
             return;
         }
 
-        let escaped = crate::system_command::shell_escape(trimmed);
+        // A selection spans the reader's wrapped lines, so it carries newlines
+        // that are an artefact of display rather than part of the text. They also
+        // truncate the command on Windows, where cmd ends a command at a newline.
+        let normalized = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        let escaped = crate::system_command::shell_escape(&normalized);
         let command = if command_template.contains("{}") {
             command_template.replace("{}", &escaped)
         } else {
             format!(
                 "{} {}",
                 command_template,
-                crate::system_command::shell_quote(trimmed)
+                crate::system_command::shell_quote(&normalized)
             )
         };
 
@@ -931,17 +936,17 @@ impl App {
                 }
             }
             settings::LookupDisplay::Popup => {
-                let word = if trimmed.len() > 40 {
+                let word = if normalized.chars().count() > 40 {
                     format!(
                         "{}...",
-                        &trimmed[..trimmed
+                        &normalized[..normalized
                             .char_indices()
                             .nth(37)
                             .map(|(i, _)| i)
-                            .unwrap_or(trimmed.len())]
+                            .unwrap_or(normalized.len())]
                     )
                 } else {
-                    trimmed.to_string()
+                    normalized.clone()
                 };
 
                 let result = shell_command(&command).output();
