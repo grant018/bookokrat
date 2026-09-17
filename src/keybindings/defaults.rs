@@ -210,6 +210,7 @@ fn epub_normal_specifics(keymap: &mut Keymap) {
     // `dd` deletes the comment or highlight under the cursor (or covered by
     // the visual selection). Mirrors the EpubContent binding.
     bind!(ctx, "dd" => Action::DeleteComment);
+    bind!(ctx, "c" => Action::CopySelection);
 }
 
 fn pdf_specifics(keymap: &mut Keymap) {

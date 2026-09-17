@@ -219,17 +219,16 @@ impl crate::markdown_text_reader::MarkdownTextReader {
         self.text_selection.has_selection()
     }
 
-    pub fn copy_selection_to_clipboard(&mut self) -> Result<(), String> {
-        if let Some(selected_text) = self
-            .text_selection
-            .extract_selected_text(&self.raw_text_lines)
-        {
-            self.last_copied_text = Some(selected_text.clone());
-            crate::clipboard::copy_to_clipboard(&selected_text)?;
-            Ok(())
-        } else {
-            Err("No text selected".to_string())
-        }
+    /// Copy the active selection, mouse-driven or visual-mode, and report how
+    /// many characters were copied.
+    pub fn copy_selection_to_clipboard(&mut self) -> Result<usize, String> {
+        let Some(selected_text) = self.get_selected_text() else {
+            return Err("No text selected".to_string());
+        };
+        let char_count = selected_text.chars().count();
+        self.last_copied_text = Some(selected_text.clone());
+        crate::clipboard::copy_to_clipboard(&selected_text)?;
+        Ok(char_count)
     }
 
     pub fn copy_chapter_to_clipboard(&mut self) -> Result<(), String> {

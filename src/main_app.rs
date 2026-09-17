@@ -5678,6 +5678,16 @@ impl App {
         true
     }
 
+    fn copy_selection_with_feedback(&mut self) {
+        match self.text_reader.copy_selection_to_clipboard() {
+            Ok(chars) => self.show_info(format!("Copied {chars} characters")),
+            Err(e) => {
+                error!("Copy failed: {e}");
+                self.show_error(format!("Copy failed: {e}"));
+            }
+        }
+    }
+
     fn dispatch_epub_normal_action(&mut self, action: crate::keybindings::action::Action) -> bool {
         use crate::keybindings::action::Action;
 
@@ -5873,6 +5883,10 @@ impl App {
                 self.open_highlight_palette();
                 true
             }
+            Action::CopySelection => {
+                self.copy_selection_with_feedback();
+                true
+            }
             _ => false,
         }
     }
@@ -5988,9 +6002,7 @@ impl App {
                 self.open_highlight_palette();
             }
             Action::CopySelection => {
-                if let Err(e) = self.text_reader.copy_selection_to_clipboard() {
-                    error!("Copy failed: {e}");
-                }
+                self.copy_selection_with_feedback();
             }
             Action::FollowLink => {
                 if let Some(link_info) = self.text_reader.get_link_at_cursor() {
