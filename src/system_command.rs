@@ -192,11 +192,19 @@ impl RealSystemCommandExecutor {
 pub fn shell_command(command_line: &str) -> Command {
     use std::os::windows::process::CommandExt;
 
+    // A spawned console process inherits our console, and redirecting the std
+    // handles does not stop it touching that console directly: cmd and
+    // powershell scroll the buffer on startup, which desynchronizes the
+    // diffing renderer and leaves shifted text behind until a full repaint.
+    // CREATE_NO_WINDOW gives the child its own hidden console instead.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
     let mut command = Command::new("cmd");
     command
         .arg("/S")
         .arg("/C")
-        .raw_arg(format!("\"{command_line}\""));
+        .raw_arg(format!("\"{command_line}\""))
+        .creation_flags(CREATE_NO_WINDOW);
     command
 }
 
