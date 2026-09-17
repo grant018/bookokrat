@@ -163,13 +163,12 @@ pub fn key_event_to_input(event: &KeyEvent) -> KeyInput {
     let mut modifiers = event.modifiers;
     let code = event.code;
 
-    // crossterm reports uppercase chars as Shift+char; we normalize:
-    // Shift+Char('A') stays as-is (the uppercase char IS the identity)
-    // but we strip SHIFT from the modifiers since the char itself carries the case.
-    if let KeyCode::Char(c) = code {
-        if c.is_ascii_uppercase() {
-            modifiers.remove(KeyModifiers::SHIFT);
-        }
+    // A character already encodes Shift ('a' -> 'A', '4' -> '$'), so a redundant
+    // SHIFT flag would stop the binding matching. Windows reports SHIFT for every
+    // shifted key, not just letters, which otherwise breaks `$`, `?`, `{`, `}`,
+    // `^`, `_`, `+`, `<` and `>`.
+    if matches!(code, KeyCode::Char(_)) {
+        modifiers.remove(KeyModifiers::SHIFT);
     }
 
     // BackTab is crossterm's way of saying Shift+Tab.
