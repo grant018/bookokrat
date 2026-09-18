@@ -80,12 +80,7 @@ at the bottom of this document for the syntax.
 │  Space+h       Toggle reading history popup                                 │
 │  Space+d       Show book statistics popup                                   │
 │  Space+o       Open current book in system viewer                           │
-│  Space+l l     Lookup selection (generic lookup_command)                    │
-│  Space+l d     Look up selection in a dictionary                            │
-│  Space+l t     Translate selection                                          │
-│  Space+l w     Look up selection on Wikipedia                               │
-│  Space+l g     Search for selection on Google                               │
-│  Space+l c     Send selection to Claude                                     │
+│  Space+l       Look up selection (pick a target from the list)              │
 │  Space+w       Toggle file watching / auto-reload (PDF)                     │
 │  Space+D       Toggle single / dual page layout (PDF)                       │
 │  Space+S       Toggle scroll / page render mode (PDF, Kitty only)           │
@@ -456,7 +451,8 @@ PDF annotations require a graphics-capable terminal.
     in the settings file for the full color format.
 
   [DICTIONARY / SHELL LOOKUP]
-    Select text and press Space+l l to look up words. Configure in your
+    Select text and press Space+l, then pick a target from the list or
+    press its first letter. Configure in your
     settings file (~/.config/bookokrat/config.yaml):
 
     Console dictionary (output shown in scrollable popup):
@@ -476,8 +472,8 @@ PDF annotations require a graphics-capable terminal.
     {} is replaced with the selected text. lookup_display can be "popup"
     (capture output) or "fire_and_forget" (launch and forget).
 
-    Named targets, each on its own key under the Space+l prefix:
-      d dictionary   t translate   w wikipedia   g google   c claude
+    Named targets appear in the Space+l picker, each selectable by its
+    first letter:
 
       lookups:
         dictionary:
@@ -487,7 +483,7 @@ PDF annotations require a graphics-capable terminal.
           command: "open 'https://www.google.com/search?q={}'"
           display: fire_and_forget
 
-    A key whose target is not configured reports that it is unset.
+    With no targets configured, Space+l runs lookup_command instead.
 
   [ZEN MODE]
     Toggle zen mode for distraction-free reading:

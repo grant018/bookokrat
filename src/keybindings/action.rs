@@ -68,11 +68,6 @@ pub enum Action {
     CopyChapterText,
     CopyTocItem,
     LookupSelection,
-    LookupDictionary,
-    LookupTranslate,
-    LookupWikipedia,
-    LookupGoogle,
-    LookupClaude,
     FollowLink,
 
     // === Vim normal mode ===
@@ -218,11 +213,6 @@ impl Action {
         Action::CopyChapterText,
         Action::CopyTocItem,
         Action::LookupSelection,
-        Action::LookupDictionary,
-        Action::LookupTranslate,
-        Action::LookupWikipedia,
-        Action::LookupGoogle,
-        Action::LookupClaude,
         Action::FollowLink,
         Action::ToggleNormalMode,
         Action::EnterVisualMode,
@@ -361,11 +351,6 @@ impl Action {
             CopyChapterText => "Copy chapter text (EPUB) / page text (PDF)",
             CopyTocItem => "Copy the selected TOC entry (PDF)",
             LookupSelection => "Run the configured lookup command on the selection",
-            LookupDictionary => "Look up the selection with the 'dictionary' lookup target",
-            LookupTranslate => "Look up the selection with the 'translate' lookup target",
-            LookupWikipedia => "Look up the selection with the 'wikipedia' lookup target",
-            LookupGoogle => "Look up the selection with the 'google' lookup target",
-            LookupClaude => "Look up the selection with the 'claude' lookup target",
             FollowLink => "Follow the link under the cursor",
 
             // Vim normal mode
@@ -518,8 +503,6 @@ mod tests {
                 AddComment | OpenHighlightPalette | DeleteComment => a,
                 CopySelection | CopyChapterText | CopyTocItem => a,
                 LookupSelection | FollowLink => a,
-                LookupDictionary | LookupTranslate | LookupWikipedia | LookupGoogle
-                | LookupClaude => a,
                 ToggleNormalMode | EnterVisualMode | EnterVisualLineMode | StartYank => a,
                 FindForward | FindBackward | TillForward | TillBackward | RepeatFind
                 | RepeatFindReverse => a,

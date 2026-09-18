@@ -31,6 +31,7 @@ use crate::widget::highlight_palette::{
     classify_palette_key, palette_edit_hud_message, palette_hud_message,
     render_centered_highlight_palette,
 };
+use crate::widget::lookup_picker::{LookupPicker, LookupPickerAction};
 use crate::widget::lookup_popup::{LookupPopup, LookupPopupAction};
 use crate::widget::marks_popup::{MarkScopeKey, MarksPopup, MarksPopupAction};
 use crate::widget::popup::Popup;
@@ -267,6 +268,7 @@ pub struct App {
     settings_popup: Option<SettingsPopup>,
     settings: settings::RuntimeSettings,
     lookup_popup: Option<LookupPopup>,
+    lookup_picker: Option<LookupPicker>,
     pending_visual_inner: bool,
     pending_highlight_palette: bool,
     /// When the highlight palette targets an existing highlight (recolor /
@@ -744,6 +746,7 @@ impl App {
             settings_popup: None,
             settings,
             lookup_popup: None,
+            lookup_picker: None,
             pending_visual_inner: false,
             pending_highlight_palette: false,
             highlight_palette_target: None,
@@ -882,17 +885,44 @@ impl App {
         }
     }
 
-    fn dispatch_named_lookup(&mut self, name: &str, key_hint: &str) -> bool {
-        if let Some(text) = self.lookup_selection_or_warn(key_hint) {
-            let target = self.settings.load().lookups.get(name).cloned();
-            match target {
-                Some(target) => self.run_lookup(&target.command, target.display, &text),
-                None => self.show_info(format!(
-                    "No '{name}' lookup configured. Add it under `lookups:` in settings (Space+s)."
-                )),
+    /// Open the target picker over the configured `lookups:`. With none
+    /// configured this falls back to the single `lookup_command`, so a config
+    /// that predates named targets keeps working.
+    fn open_lookup_picker(&mut self, text: String) {
+        let targets: Vec<String> = self.settings.load().lookups.keys().cloned().collect();
+        if targets.is_empty() {
+            self.execute_lookup_command(&text);
+        } else {
+            self.lookup_picker = Some(LookupPicker::new(targets, text));
+        }
+    }
+
+    fn handle_lookup_picker_key(&mut self, key: &crossterm::event::KeyEvent) -> bool {
+        let Some(picker) = self.lookup_picker.as_mut() else {
+            return false;
+        };
+        match picker.handle_key(&key.code) {
+            LookupPickerAction::Run(name) => {
+                let text = picker.query().to_string();
+                self.lookup_picker = None;
+                let target = self.settings.load().lookups.get(&name).cloned();
+                match target {
+                    Some(target) => self.run_lookup(&target.command, target.display, &text),
+                    None => {
+                        self.show_error(format!("Lookup target '{name}' is no longer configured"))
+                    }
+                }
             }
+            LookupPickerAction::Cancel => self.lookup_picker = None,
+            LookupPickerAction::Redraw | LookupPickerAction::Ignored => {}
         }
         true
+    }
+
+    fn render_lookup_picker(&self, f: &mut ratatui::Frame) {
+        if let Some(picker) = self.lookup_picker.as_ref() {
+            picker.render(f, f.area());
+        }
     }
 
     fn run_lookup(
@@ -4199,6 +4229,7 @@ impl App {
         }
 
         self.render_highlight_palette(f);
+        self.render_lookup_picker(f);
 
         #[cfg(feature = "pdf")]
         if self.has_active_popup()
@@ -5349,16 +5380,11 @@ impl App {
                 true
             }
             Action::LookupSelection => {
-                if let Some(text) = self.lookup_selection_or_warn("Space+l l") {
-                    self.execute_lookup_command(&text);
+                if let Some(text) = self.lookup_selection_or_warn("Space+l") {
+                    self.open_lookup_picker(text);
                 }
                 true
             }
-            Action::LookupDictionary => self.dispatch_named_lookup("dictionary", "Space+l d"),
-            Action::LookupTranslate => self.dispatch_named_lookup("translate", "Space+l t"),
-            Action::LookupWikipedia => self.dispatch_named_lookup("wikipedia", "Space+l w"),
-            Action::LookupGoogle => self.dispatch_named_lookup("google", "Space+l g"),
-            Action::LookupClaude => self.dispatch_named_lookup("claude", "Space+l c"),
             Action::ResetNavPanelWidth => {
                 self.nav_panel_width_override = None;
                 self.settings
@@ -6709,6 +6735,10 @@ impl App {
                 use crate::markdown_text_reader::VisualMode;
                 let visual_mode = self.text_reader.get_visual_mode();
 
+                if self.handle_lookup_picker_key(&key) {
+                    return None;
+                }
+
                 if self.handle_highlight_palette_key(&key) {
                     return None;
                 }
@@ -6798,6 +6828,10 @@ impl App {
             // Highlight palette opened via H while the cursor sits inside an
             // existing highlight (no visual selection). Must intercept before
             // the keymap so color keys aren't consumed as vim motions.
+            if self.handle_lookup_picker_key(&key) {
+                return None;
+            }
+
             if self.handle_highlight_palette_key(&key) {
                 return None;
             }
@@ -6912,6 +6946,10 @@ impl App {
                 }
                 _ => {}
             }
+        }
+
+        if self.handle_lookup_picker_key(&key) {
+            return None;
         }
 
         if self.handle_highlight_palette_key(&key) {

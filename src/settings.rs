@@ -900,18 +900,12 @@ const CUSTOM_THEMES_TEMPLATE: &str = r#"# ======================================
 const LOOKUP_TARGETS_TEMPLATE: &str = r#"# ============================================================================
 # Lookup Targets
 # ============================================================================
-# Named lookup targets, each bound to its own key under the Space+l prefix:
-#
-#   Space+l l   lookup_command above (the generic lookup)
-#   Space+l d   dictionary
-#   Space+l t   translate
-#   Space+l w   wikipedia
-#   Space+l g   google
-#   Space+l c   claude
+# Named lookup targets. Space+l opens a picker listing them; each is also
+# selectable by its first letter. With none configured, Space+l falls back to
+# the single lookup_command above.
 #
 # Each target takes a command (with {} for the selected text) and an optional
-# display mode (popup or fire_and_forget, defaulting to popup). A key whose
-# target is not configured below reports that it is unset.
+# display mode (popup or fire_and_forget, defaulting to popup).
 #
 # lookups:
 #   dictionary:
