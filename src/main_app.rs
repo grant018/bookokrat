@@ -5810,6 +5810,11 @@ impl App {
                 self.text_reader.normal_mode_line_end();
                 true
             }
+            Action::LineMiddle => {
+                self.text_reader.clear_count();
+                self.text_reader.normal_mode_line_middle();
+                true
+            }
             Action::ParagraphBackward => {
                 let count = self.text_reader.take_count();
                 for _ in 0..count {

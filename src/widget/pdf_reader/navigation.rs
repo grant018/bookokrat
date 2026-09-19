@@ -1008,6 +1008,11 @@ impl PdfReaderState {
                 self.normal_mode.move_line_end(&lb);
                 InputResponse::handled(Some(self.normal_cursor_moved_action()))
             }
+            Action::LineMiddle => {
+                let lb = self.current_line_bounds();
+                self.normal_mode.move_line_middle(&lb);
+                InputResponse::handled(Some(self.normal_cursor_moved_action()))
+            }
             Action::ParagraphBackward | Action::ParagraphForward => {
                 // Paragraph navigation not implemented for PDF normal mode
                 InputResponse::handled(None)

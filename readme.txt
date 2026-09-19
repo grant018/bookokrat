@@ -156,6 +156,7 @@ at the bottom of this document for the syntax.
 │  h/j/k/l       Move cursor                                                  │
 │  w/W/b/e       Word motions (small/Big)                                     │
 │  0/^/$         Line start / first non-space / end                           │
+│  gM            Middle of the line                                           │
 │  Ctrl+d/u/f/b  Half / full page scroll                                      │
 │  { / }         Jump to previous / next paragraph                            │
 │  gg / G        Top / bottom of document                                     │

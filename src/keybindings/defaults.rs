@@ -89,6 +89,7 @@ fn add_normal_layer(ctx: &mut ContextKeymap) {
     bind!(ctx, "0" => Action::LineStart);
     bind!(ctx, "^" => Action::FirstNonBlank);
     bind!(ctx, "$" => Action::LineEnd);
+    bind!(ctx, "gM" => Action::LineMiddle);
     bind!(ctx, "{" => Action::ParagraphBackward);
     bind!(ctx, "}" => Action::ParagraphForward);
     bind!(ctx, "f" => Action::FindForward);
@@ -451,6 +452,44 @@ mod tests {
         assert_eq!(
             lookup(&keymap, KeyContext::Navigation, "gg"),
             LookupResult::Found(Action::GoTop)
+        );
+    }
+
+    #[test]
+    fn gm_uppercase_is_line_middle() {
+        let keymap = default_keymap();
+        // Same reach as the other line motions: the normal layer only, so
+        // EpubNormal and PdfNormal but not Navigation.
+        for ctx in [KeyContext::EpubNormal, KeyContext::PdfNormal] {
+            assert_eq!(
+                lookup(&keymap, ctx, "gM"),
+                LookupResult::Found(Action::LineMiddle),
+                "{ctx:?}"
+            );
+        }
+        assert_eq!(
+            lookup(&keymap, KeyContext::Navigation, "gM"),
+            lookup(&keymap, KeyContext::Navigation, "$"),
+            "gM should reach exactly as far as $"
+        );
+    }
+
+    /// `gM` adds a third sequence under the `g` prefix; the existing two must
+    /// keep resolving, and bare `M` must stay unbound.
+    #[test]
+    fn gm_does_not_shadow_other_g_bindings() {
+        let keymap = default_keymap();
+        assert_eq!(
+            lookup(&keymap, KeyContext::Navigation, "gg"),
+            LookupResult::Found(Action::GoTop)
+        );
+        assert_eq!(
+            lookup(&keymap, KeyContext::PdfNormal, "gd"),
+            LookupResult::Found(Action::SynctexInverse)
+        );
+        assert_eq!(
+            lookup(&keymap, KeyContext::Navigation, "M"),
+            LookupResult::NoMatch
         );
     }
 

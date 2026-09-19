@@ -89,6 +89,7 @@ pub enum Action {
     BigWordEnd,
     LineStart,
     LineEnd,
+    LineMiddle,
     FirstNonBlank,
 
     // === Jump list ===
@@ -232,6 +233,7 @@ impl Action {
         Action::BigWordEnd,
         Action::LineStart,
         Action::LineEnd,
+        Action::LineMiddle,
         Action::FirstNonBlank,
         Action::JumpForward,
         Action::JumpBackward,
@@ -372,6 +374,7 @@ impl Action {
             BigWordEnd => "Move to the end of the current / next WORD (whitespace-delimited)",
             LineStart => "Move to the start of the line",
             LineEnd => "Move to the end of the line",
+            LineMiddle => "Move to the middle of the line",
             FirstNonBlank => "Move to the first non-blank character on the line",
 
             // Jump list
@@ -507,7 +510,7 @@ mod tests {
                 FindForward | FindBackward | TillForward | TillBackward | RepeatFind
                 | RepeatFindReverse => a,
                 WordForward | WordBackward | WordEnd | BigWordForward | BigWordBackward
-                | BigWordEnd | LineStart | LineEnd | FirstNonBlank => a,
+                | BigWordEnd | LineStart | LineEnd | LineMiddle | FirstNonBlank => a,
                 JumpForward | JumpBackward => a,
                 SetMark | GotoMark | ToggleMarksList => a,
                 ToggleProfiling | ToggleRawHtml | ToggleJustifyText | ToggleZenBorder

@@ -297,6 +297,17 @@ impl NormalModeState {
         }
     }
 
+    /// Move to the middle of the line (vim's `gM`).
+    /// Halfway by character count; leading whitespace counts.
+    pub fn move_line_middle(&mut self, line_bounds: &[LineBounds]) {
+        if !self.active {
+            return;
+        }
+        if let Some(line) = line_bounds.get(self.cursor.line_idx) {
+            self.cursor.char_idx = line.chars.len() / 2;
+        }
+    }
+
     /// Move to first non-whitespace character
     pub fn move_first_non_whitespace(&mut self, line_bounds: &[LineBounds]) {
         if !self.active {
@@ -764,4 +775,65 @@ pub fn visual_rects_for_range(
     }
 
     rects
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pdf::types::CharInfo;
+
+    fn line_bounds(text: &str) -> Vec<LineBounds> {
+        vec![LineBounds {
+            x0: 0.0,
+            y0: 0.0,
+            x1: 10.0,
+            y1: 1.0,
+            chars: text
+                .chars()
+                .enumerate()
+                .map(|(i, c)| CharInfo { x: i as f32, c })
+                .collect(),
+            block_id: 0,
+        }]
+    }
+
+    fn active_state() -> NormalModeState {
+        let mut state = NormalModeState::new();
+        state.active = true;
+        state
+    }
+
+    /// Same vim-measured columns as the EPUB side: `gM` lands on `len / 2`.
+    #[test]
+    fn line_middle_lands_at_half_the_character_count() {
+        for len in 1..=10usize {
+            let mut state = active_state();
+            let lb = line_bounds(&"abcdefghij"[..len]);
+
+            state.move_line_middle(&lb);
+
+            assert_eq!(state.cursor.char_idx, len / 2, "line of {len} chars");
+        }
+    }
+
+    #[test]
+    fn line_middle_counts_leading_whitespace() {
+        let mut state = active_state();
+        let lb = line_bounds("    abcdef");
+
+        state.move_line_middle(&lb);
+
+        assert_eq!(state.cursor.char_idx, 5);
+    }
+
+    #[test]
+    fn line_middle_does_nothing_when_normal_mode_inactive() {
+        let mut state = NormalModeState::new();
+        state.cursor.char_idx = 1;
+        let lb = line_bounds("abcdef");
+
+        state.move_line_middle(&lb);
+
+        assert_eq!(state.cursor.char_idx, 1);
+    }
 }

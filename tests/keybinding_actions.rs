@@ -559,6 +559,9 @@ binding_tests! {
     epub_normal_dollar: KeyContext::EpubNormal, "$",
         setup = |app, _dir| { open_book(&mut app); app.focused_panel = FocusedPanel::Main(MainPanel::Content); simulate(&mut app, "n"); },
         check = |app| app.is_normal_mode();
+    epub_normal_g_m: KeyContext::EpubNormal, "gM",
+        setup = |app, _dir| { open_book(&mut app); app.focused_panel = FocusedPanel::Main(MainPanel::Content); simulate(&mut app, "n"); },
+        check = |app| app.is_normal_mode(); // cursor placement covered by unit tests
     epub_normal_curly_open: KeyContext::EpubNormal, "{",
         setup = |app, _dir| { open_book(&mut app); app.focused_panel = FocusedPanel::Main(MainPanel::Content); simulate(&mut app, "n"); },
         check = |app| app.is_normal_mode();

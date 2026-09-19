@@ -410,6 +410,16 @@ impl MarkdownTextReader {
         self.normal_mode.cursor.column = line_len.saturating_sub(1);
     }
 
+    /// vim's `gM`: halfway through the line's text by character count.
+    /// Indentation counts, unlike `^`.
+    pub fn normal_mode_line_middle(&mut self) {
+        if !self.normal_mode.active {
+            return;
+        }
+        let line_len = self.get_line_char_count(self.normal_mode.cursor.line);
+        self.normal_mode.cursor.column = line_len / 2;
+    }
+
     pub fn set_pending_find_forward(&mut self) {
         if self.normal_mode.active {
             self.normal_mode.pending_motion = PendingCharMotion::FindForward;
@@ -2318,5 +2328,73 @@ mod tests {
 
         assert_eq!(reader.normal_mode.cursor.line, 0);
         assert_eq!(reader.scroll_offset, 0);
+    }
+
+    fn reader_with_line(line: &str) -> MarkdownTextReader {
+        let mut reader = MarkdownTextReader::new_without_image_support(
+            crate::settings::RuntimeSettings::in_memory(crate::settings::Settings::default()),
+        );
+        reader.normal_mode.active = true;
+        reader.raw_text_lines = vec![line.to_string()];
+        reader
+    }
+
+    /// Columns measured against real vim: `gM` lands on `len / 2` for every
+    /// length from 1 to 10.
+    #[test]
+    fn line_middle_lands_at_half_the_character_count() {
+        for len in 1..=10usize {
+            let mut reader = reader_with_line(&"abcdefghij"[..len]);
+            reader.normal_mode.cursor.column = 0;
+
+            reader.normal_mode_line_middle();
+
+            assert_eq!(
+                reader.normal_mode.cursor.column,
+                len / 2,
+                "line of {len} chars"
+            );
+        }
+    }
+
+    /// vim counts indentation as part of the line, unlike `^`.
+    #[test]
+    fn line_middle_counts_leading_whitespace() {
+        let mut reader = reader_with_line("    abcdef");
+
+        reader.normal_mode_line_middle();
+
+        assert_eq!(reader.normal_mode.cursor.column, 5);
+    }
+
+    #[test]
+    fn line_middle_counts_characters_not_bytes() {
+        let mut reader = reader_with_line("héllo wörld!");
+
+        reader.normal_mode_line_middle();
+
+        // 12 characters (14 bytes) -> the 'w', at character index 6.
+        assert_eq!(reader.normal_mode.cursor.column, 6);
+    }
+
+    #[test]
+    fn line_middle_is_zero_for_empty_line() {
+        let mut reader = reader_with_line("");
+        reader.normal_mode.cursor.column = 0;
+
+        reader.normal_mode_line_middle();
+
+        assert_eq!(reader.normal_mode.cursor.column, 0);
+    }
+
+    #[test]
+    fn line_middle_does_nothing_when_normal_mode_inactive() {
+        let mut reader = reader_with_line("abcdef");
+        reader.normal_mode.active = false;
+        reader.normal_mode.cursor.column = 1;
+
+        reader.normal_mode_line_middle();
+
+        assert_eq!(reader.normal_mode.cursor.column, 1);
     }
 }
