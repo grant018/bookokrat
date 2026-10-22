@@ -21,7 +21,9 @@ use crate::search_engine::SearchEngine;
 #[cfg(feature = "pdf")]
 use crate::search_engine::SearchLine;
 use crate::settings;
-use crate::system_command::{RealSystemCommandExecutor, SystemCommandExecutor, shell_command};
+use crate::system_command::{
+    RealSystemCommandExecutor, SystemCommandExecutor, reap_in_background, shell_command,
+};
 use crate::table_of_contents::TocItem;
 use crate::theme::{current_theme, current_theme_name, theme_background_for};
 use crate::types::LinkInfo;
@@ -963,7 +965,10 @@ impl App {
                     .stderr(std::process::Stdio::null())
                     .spawn()
                 {
-                    Ok(_) => self.show_info(format!("Launched: {}", command_template)),
+                    Ok(child) => {
+                        reap_in_background(child);
+                        self.show_info(format!("Launched: {}", command_template))
+                    }
                     Err(e) => self.show_error(format!("Failed to launch command: {e}")),
                 }
             }
@@ -7626,7 +7631,8 @@ impl App {
                 .stderr(std::process::Stdio::null())
                 .spawn()
             {
-                Ok(_) => {
+                Ok(child) => {
+                    reap_in_background(child);
                     self.show_info(format!("SyncTeX: {basename}:{line}"));
                 }
                 Err(e) => {

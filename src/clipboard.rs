@@ -93,6 +93,7 @@ fn run_command(cmd: &str, args: &[&str], text: &str) -> Result<(), String> {
 
     // Don't wait — xclip forks a daemon that inherits our pipe fds,
     // so wait_with_output() would block until the daemon exits.
+    crate::system_command::reap_in_background(child);
 
     Ok(())
 }

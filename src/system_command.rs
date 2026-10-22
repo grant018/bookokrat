@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::process::{Child, Command};
 
 /// Trait for executing system commands (mockable for testing)
 pub trait SystemCommandExecutor {
@@ -52,7 +52,10 @@ impl SystemCommandExecutor for RealSystemCommandExecutor {
         };
 
         match result {
-            Ok(_) => Ok(()),
+            Ok(child) => {
+                reap_in_background(child);
+                Ok(())
+            }
             Err(e) => Err(format!(
                 "Failed to open file '{}': {}",
                 absolute_path.display(),
@@ -71,10 +74,11 @@ impl SystemCommandExecutor for RealSystemCommandExecutor {
             ("xdg-open", vec![url])
         };
 
-        Command::new(command)
+        let child = Command::new(command)
             .args(&args)
             .spawn()
             .map_err(|e| format!("Failed to open URL: {e}"))?;
+        reap_in_background(child);
 
         Ok(())
     }
@@ -181,6 +185,16 @@ impl RealSystemCommandExecutor {
     ) -> Result<std::process::Child, std::io::Error> {
         Command::new("fbreader").arg(path).spawn()
     }
+}
+
+/// Wait for a fire-and-forget child on a background thread. A child that is
+/// dropped without being waited on stays a zombie until the app exits.
+pub fn reap_in_background(mut child: Child) {
+    std::thread::spawn(move || {
+        if let Err(e) = child.wait() {
+            log::warn!("Failed to wait for child process {}: {e}", child.id());
+        }
+    });
 }
 
 /// Build a command that runs `command_line` through the platform shell.
