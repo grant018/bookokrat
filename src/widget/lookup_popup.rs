@@ -11,6 +11,9 @@ use ratatui::{
         Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
     },
 };
+use std::process::{Command, Output, Stdio};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::time::Instant;
 
 pub enum LookupPopupAction {
     Close,
@@ -22,34 +25,21 @@ pub struct LookupPopup {
     total_lines: usize,
     scroll_offset: usize,
     last_popup_area: Option<Rect>,
+    pending: Option<PendingLookup>,
+}
+
+/// A lookup command still running in the background.
+struct PendingLookup {
+    rx: Receiver<Result<String, String>>,
+    started: Instant,
+    shown_secs: u64,
+    #[cfg(unix)]
+    pgid: i32,
 }
 
 impl LookupPopup {
     pub fn new(word: String, result: Result<String, String>) -> Self {
-        let lines: Vec<Line<'static>> = match result {
-            Ok(output) => {
-                if output.trim().is_empty() {
-                    vec![Line::from(Span::styled(
-                        "  (no output)",
-                        Style::default().fg(current_theme().base_03),
-                    ))]
-                } else if has_ansi_escapes(&output) {
-                    parse_ansi_output(&output)
-                } else {
-                    output.lines().map(style_by_indent).collect()
-                }
-            }
-            Err(err) => err
-                .lines()
-                .map(|l| {
-                    Line::from(Span::styled(
-                        format!("  {l}"),
-                        Style::default().fg(current_theme().base_08),
-                    ))
-                })
-                .collect(),
-        };
-
+        let lines = result_lines(result);
         let total_lines = lines.len();
 
         Self {
@@ -58,7 +48,89 @@ impl LookupPopup {
             total_lines,
             scroll_offset: 0,
             last_popup_area: None,
+            pending: None,
         }
+    }
+
+    /// Run `command` in the background, showing a placeholder until its output
+    /// arrives. Slow commands (an LLM, a network dictionary) would otherwise
+    /// freeze the UI for as long as they take.
+    pub fn spawn(word: String, mut command: Command) -> Self {
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        // Its own process group, so closing the popup early stops the whole
+        // pipeline rather than just the shell that launched it.
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+
+        let child = match command.spawn() {
+            Ok(child) => child,
+            Err(e) => return Self::new(word, Err(format!("Failed to run command: {e}"))),
+        };
+        #[cfg(unix)]
+        let pgid = child.id() as i32;
+
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(command_result(child.wait_with_output()));
+        });
+
+        let mut popup = Self::new(word, Ok(String::new()));
+        popup.set_lines(thinking_lines(0));
+        popup.pending = Some(PendingLookup {
+            rx,
+            started: Instant::now(),
+            shown_secs: 0,
+            #[cfg(unix)]
+            pgid,
+        });
+        popup
+    }
+
+    /// Pick up a finished background lookup and tick the elapsed-time counter.
+    /// Returns true when the popup changed and needs a redraw.
+    pub fn poll(&mut self) -> bool {
+        let Some(pending) = self.pending.as_mut() else {
+            return false;
+        };
+        let result = match pending.rx.try_recv() {
+            Ok(result) => result,
+            Err(TryRecvError::Disconnected) => Err("Lookup ended without a result".to_string()),
+            Err(TryRecvError::Empty) => {
+                let secs = pending.started.elapsed().as_secs();
+                if secs == pending.shown_secs {
+                    return false;
+                }
+                pending.shown_secs = secs;
+                self.set_lines(thinking_lines(secs));
+                return true;
+            }
+        };
+        self.pending = None;
+        self.set_lines(result_lines(result));
+        true
+    }
+
+    /// Block until a background lookup finishes, for tests that snapshot the result.
+    pub fn wait(&mut self) {
+        if let Some(pending) = self.pending.take() {
+            let result = pending
+                .rx
+                .recv()
+                .unwrap_or_else(|_| Err("Lookup ended without a result".to_string()));
+            self.set_lines(result_lines(result));
+        }
+    }
+
+    fn set_lines(&mut self, lines: Vec<Line<'static>>) {
+        self.total_lines = lines.len();
+        self.lines = lines;
+        self.scroll_offset = 0;
     }
 
     pub fn render(&mut self, f: &mut Frame, area: Rect) {
@@ -180,6 +252,73 @@ impl Popup for LookupPopup {
     fn get_last_popup_area(&self) -> Option<Rect> {
         self.last_popup_area
     }
+}
+
+impl Drop for LookupPopup {
+    /// Closing the popup before the answer arrives cancels the lookup.
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Some(pending) = self.pending.take() {
+            // A result already waiting means the process has been reaped and
+            // its pgid may be reused, so only signal one still running.
+            if matches!(pending.rx.try_recv(), Err(TryRecvError::Empty)) {
+                unsafe {
+                    libc::kill(-pending.pgid, libc::SIGTERM);
+                }
+            }
+        }
+    }
+}
+
+fn command_result(output: std::io::Result<Output>) -> Result<String, String> {
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+                if stderr.is_empty() {
+                    Err(format!("Command exited with status {}", output.status))
+                } else {
+                    Err(stderr)
+                }
+            }
+        }
+        Err(e) => Err(format!("Failed to run command: {e}")),
+    }
+}
+
+fn result_lines(result: Result<String, String>) -> Vec<Line<'static>> {
+    match result {
+        Ok(output) => {
+            if output.trim().is_empty() {
+                vec![Line::from(Span::styled(
+                    "  (no output)",
+                    Style::default().fg(current_theme().base_03),
+                ))]
+            } else if has_ansi_escapes(&output) {
+                parse_ansi_output(&output)
+            } else {
+                output.lines().map(style_by_indent).collect()
+            }
+        }
+        Err(err) => err
+            .lines()
+            .map(|l| {
+                Line::from(Span::styled(
+                    format!("  {l}"),
+                    Style::default().fg(current_theme().base_08),
+                ))
+            })
+            .collect(),
+    }
+}
+
+fn thinking_lines(secs: u64) -> Vec<Line<'static>> {
+    vec![Line::from(Span::styled(
+        format!("  Thinking… {secs}s"),
+        Style::default().fg(current_theme().base_03),
+    ))]
 }
 
 /// Style a line based on its indentation level using theme colors.

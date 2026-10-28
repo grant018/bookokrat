@@ -986,28 +986,16 @@ impl App {
                     normalized.clone()
                 };
 
-                let result = shell_command(&command).output();
-
-                let popup_result = match result {
-                    Ok(output) => {
-                        if output.status.success() {
-                            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-                        } else {
-                            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-                            if stderr.is_empty() {
-                                Err(format!("Command exited with status {}", output.status))
-                            } else {
-                                Err(stderr)
-                            }
-                        }
-                    }
-                    Err(e) => Err(format!("Failed to run command: {e}")),
-                };
+                #[allow(unused_mut)]
+                let mut popup = LookupPopup::spawn(word, shell_command(&command));
+                // Snapshot tests render the finished popup, not the placeholder.
+                #[cfg(any(test, feature = "test-utils"))]
+                popup.wait();
 
                 if let FocusedPanel::Main(panel) = self.focused_panel {
                     self.previous_main_panel = panel;
                 }
-                self.lookup_popup = Some(LookupPopup::new(word, popup_result));
+                self.lookup_popup = Some(popup);
                 self.focused_panel = FocusedPanel::Popup(PopupWindow::Lookup);
             }
         }
@@ -8518,6 +8506,10 @@ where
             #[cfg(feature = "pdf")]
             let pdf_mark_jump_expired = app.tick_pdf_mark_jump_highlight();
             let pdf_renders_ready = app.poll_pdf_renders();
+            let lookup_updated = app.lookup_popup.as_mut().is_some_and(|p| p.poll());
+            if lookup_updated {
+                needs_redraw = true;
+            }
             if images_loaded {
                 needs_redraw = true;
                 debug!("Images loaded, forcing redraw");
