@@ -276,6 +276,64 @@ pub fn shell_quote(text: &str) -> String {
     format!("'{}'", shell_escape(text))
 }
 
+/// Substitute `value` for every `placeholder` in a user-supplied command
+/// template, quoted to suit where the placeholder sits: inside single or
+/// double quotes it is escaped for them, and on its own it is quoted. Text
+/// from a book or a SyncTeX file can then never run as part of the command.
+pub fn fill_placeholder(template: &str, placeholder: &str, value: &str) -> String {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Quote {
+        None,
+        #[cfg_attr(windows, allow(dead_code))]
+        Single,
+        Double,
+    }
+
+    let mut out = String::with_capacity(template.len() + value.len());
+    let mut quote = Quote::None;
+    let mut rest = template;
+    while let Some(ch) = rest.chars().next() {
+        if rest.starts_with(placeholder) && !placeholder.is_empty() {
+            out.push_str(&match quote {
+                Quote::None => shell_quote(value),
+                #[cfg(not(windows))]
+                Quote::Single => shell_escape(value),
+                #[cfg(not(windows))]
+                Quote::Double => value
+                    .chars()
+                    .flat_map(|c| {
+                        let escape = matches!(c, '\\' | '"' | '$' | '`').then_some('\\');
+                        escape.into_iter().chain(std::iter::once(c))
+                    })
+                    .collect(),
+                #[cfg(windows)]
+                _ => shell_escape(value),
+            });
+            rest = &rest[placeholder.len()..];
+            continue;
+        }
+        out.push(ch);
+        rest = &rest[ch.len_utf8()..];
+        match (quote, ch) {
+            #[cfg(not(windows))]
+            (Quote::None | Quote::Double, '\\') => {
+                if let Some(next) = rest.chars().next() {
+                    out.push(next);
+                    rest = &rest[next.len_utf8()..];
+                }
+            }
+            #[cfg(not(windows))]
+            (Quote::None, '\'') => quote = Quote::Single,
+            #[cfg(not(windows))]
+            (Quote::Single, '\'') => quote = Quote::None,
+            (Quote::None, '"') => quote = Quote::Double,
+            (Quote::Double, '"') => quote = Quote::None,
+            _ => {}
+        }
+    }
+    out
+}
+
 #[cfg(any(test, feature = "test-utils"))]
 pub struct MockSystemCommandExecutor {
     pub executed_commands: std::cell::RefCell<Vec<String>>,

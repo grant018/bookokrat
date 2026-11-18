@@ -946,9 +946,8 @@ impl App {
         #[cfg(windows)]
         let normalized = crate::system_command::soften_quotes(&normalized);
 
-        let escaped = crate::system_command::shell_escape(&normalized);
         let command = if command_template.contains("{}") {
-            command_template.replace("{}", &escaped)
+            crate::system_command::fill_placeholder(command_template, "{}", &normalized)
         } else {
             format!(
                 "{} {}",
@@ -7608,10 +7607,13 @@ impl App {
             .unwrap_or_else(|| editor_file.clone());
 
         if let Some(editor_cmd) = self.settings.load().synctex_editor.clone() {
-            let cmd = editor_cmd
-                .replace("{file}", &editor_file)
-                .replace("{line}", &line.to_string())
-                .replace("{column}", "0");
+            let cmd = crate::system_command::fill_placeholder(
+                &editor_cmd
+                    .replace("{line}", &line.to_string())
+                    .replace("{column}", "0"),
+                "{file}",
+                &editor_file,
+            );
             log::info!("SyncTeX inverse: launching editor: {cmd}");
             match shell_command(&cmd)
                 .stdin(std::process::Stdio::null())
@@ -7725,10 +7727,11 @@ impl App {
         }
 
         if let Some(editor_cmd) = self.settings.load().synctex_editor.clone() {
-            let cmd = editor_cmd
-                .replace("{file}", test_file)
-                .replace("{line}", "1")
-                .replace("{column}", "0");
+            let cmd = crate::system_command::fill_placeholder(
+                &editor_cmd.replace("{line}", "1").replace("{column}", "0"),
+                "{file}",
+                test_file,
+            );
             log::info!("SyncTeX test: launching editor: {cmd}");
             match shell_command(&cmd)
                 .stdin(std::process::Stdio::null())
