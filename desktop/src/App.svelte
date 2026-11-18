@@ -264,7 +264,7 @@
           n += countWords(node.blocks);
           break;
         case 'list':
-          for (const item of node.items) n += countWords(item);
+          for (const item of node.items) n += countWords(item.blocks);
           break;
         case 'dl':
           for (const item of node.items) {

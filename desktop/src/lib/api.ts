@@ -37,7 +37,7 @@ export type Block =
   | { t: 'p'; text: Inline[] }
   | { t: 'code'; lang?: string; code: string }
   | { t: 'quote'; blocks: Node[] }
-  | { t: 'list'; ordered: boolean; start: number; items: Node[][] }
+  | { t: 'list'; ordered: boolean; start: number; items: { id?: string; blocks: Node[] }[] }
   | { t: 'table'; header?: Cell[]; rows: Cell[][]; align: string[] }
   | { t: 'dl'; items: { term: Inline[]; defs: Node[][] }[] }
   | { t: 'epub'; kind: string; el: string; blocks: Node[] }

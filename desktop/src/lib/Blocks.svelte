@@ -113,7 +113,7 @@
       data-anchor={node.id}
     >
       {#each node.items as item}
-        <li><Self nodes={item} /></li>
+        <li data-anchor={item.id}><Self nodes={item.blocks} /></li>
       {/each}
     </svelte:element>
   {:else if node.t === 'table'}

@@ -523,7 +523,7 @@ fn book_details_now(state: &AppState, path: String) -> Result<BookDetails, Strin
     Ok(BookDetails {
         title: doc.mdata("title").map(|m| m.value.clone()),
         author: doc.mdata("creator").map(|m| m.value.clone()),
-        cover: doc.get_cover_id().is_some(),
+        cover: cover_id(&doc).is_some(),
     })
 }
 
@@ -755,7 +755,7 @@ fn open_epub(state: &AppState, path: String) -> Result<BookMeta, String> {
         author: book.author.clone(),
         language,
         chapter_count: book.chapters.len(),
-        cover: book.doc.get_cover_id().is_some(),
+        cover: cover_id(&book.doc).is_some(),
         toc,
         place: left_at.and_then(|place| {
             book.place_by_chapter(place)
@@ -2408,6 +2408,17 @@ fn page_image(app: &AppHandle, uri_path: &str) -> Result<Vec<u8>, String> {
     pdf::png(&*handle.page(page, width)?)
 }
 
+/// The id of a book's cover image. The epub crate looks only for the EPUB 3
+/// marking in an EPUB 3 book, but many name their cover the EPUB 2 way,
+/// with `<meta name="cover">`, as readers accept.
+fn cover_id<R: std::io::Read + std::io::Seek>(doc: &EpubDoc<R>) -> Option<String> {
+    doc.get_cover_id().or_else(|| {
+        let id = doc.mdata("cover")?.value.clone();
+        let resource = doc.resources.get(&id)?;
+        resource.mime.starts_with("image/").then_some(id)
+    })
+}
+
 /// The cover image inside a book, as a JPEG small enough for the library.
 fn book_cover(app: &AppHandle, uri_path: &str) -> Result<Vec<u8>, String> {
     let book = dto::percent_decode(uri_path.trim_start_matches('/'));
@@ -2420,8 +2431,8 @@ fn book_cover(app: &AppHandle, uri_path: &str) -> Result<Vec<u8>, String> {
         first_page(&book)?
     } else {
         let mut doc = app.state::<AppState>().manager().load_epub(&book)?;
-        let (data, _mime) = doc
-            .get_cover()
+        let (data, _mime) = cover_id(&doc)
+            .and_then(|id| doc.get_resource(&id))
             .ok_or_else(|| format!("{book} has no cover image"))?;
         image::load_from_memory(&data)
             .map_err(|e| format!("Failed to decode the cover of {book}: {e}"))?

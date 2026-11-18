@@ -27,11 +27,33 @@
       const length = textLength(node);
       // An anchor often sits alone in an empty block ahead of its text.
       if (out.length === 0 && length === 0 && !holds(node, null)) continue;
-      out.push(node);
+      out.push(i === start && anchor ? narrow(node, anchor) : node);
       chars += length;
       if (out[0]!.t !== 'h' && chars > 0) break;
     }
     return out;
+  }
+
+  /** The part of a list or other container that the anchor is on: the
+      entry a link to one of a list of endnotes is after, not the list. */
+  function narrow(node: Node, anchor: string): Node {
+    if (node.id === anchor) return node;
+    if (node.t === 'list') {
+      const at = node.items.findIndex((item) => holds(item, anchor));
+      if (at < 0) return node;
+      const item = node.items[at]!;
+      const blocks = item.id === anchor ? item.blocks : narrowAll(item.blocks, anchor);
+      return { ...node, start: node.start + at, items: [{ ...item, blocks }] };
+    }
+    if (node.t === 'quote' || node.t === 'epub') return { ...node, blocks: narrowAll(node.blocks, anchor) };
+    return node;
+  }
+
+  /** The blocks from the one the anchor is on. */
+  function narrowAll(blocks: Node[], anchor: string): Node[] {
+    const at = blocks.findIndex((block) => holds(block, anchor));
+    if (at < 0) return blocks;
+    return [narrow(blocks[at]!, anchor), ...blocks.slice(at + 1)];
   }
 
   /** Whether anything in `value` has the id `id`; with null, whether it

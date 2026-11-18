@@ -20,6 +20,14 @@ pub struct NodeDto {
 }
 
 #[derive(Serialize)]
+pub struct ListItemDto {
+    /// What links to this entry point at, as endnotes in a list do.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub blocks: Vec<NodeDto>,
+}
+
+#[derive(Serialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum BlockDto {
     H {
@@ -40,7 +48,7 @@ pub enum BlockDto {
     List {
         ordered: bool,
         start: u32,
-        items: Vec<Vec<NodeDto>>,
+        items: Vec<ListItemDto>,
     },
     Table {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -157,7 +165,13 @@ impl Converter<'_> {
                 BlockDto::List {
                     ordered,
                     start,
-                    items: items.iter().map(|i| self.nodes(&i.content)).collect(),
+                    items: items
+                        .iter()
+                        .map(|i| ListItemDto {
+                            id: i.id.clone(),
+                            blocks: self.nodes(&i.content),
+                        })
+                        .collect(),
                 }
             }
             Block::Table {

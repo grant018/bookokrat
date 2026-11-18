@@ -160,7 +160,7 @@
       if (node.t === 'h' || node.t === 'p') n += inlineChars(node.text);
       else if (node.t === 'code') n += node.code.length;
       else if (node.t === 'quote' || node.t === 'epub') n += blockChars(node.blocks);
-      else if (node.t === 'list') for (const item of node.items) n += blockChars(item);
+      else if (node.t === 'list') for (const item of node.items) n += blockChars(item.blocks);
       else if (node.t === 'dl') {
         for (const item of node.items) {
           n += inlineChars(item.term);
