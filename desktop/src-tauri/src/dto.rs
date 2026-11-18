@@ -3,8 +3,8 @@
 //! position is the same node index the TUI stores comments and marks against.
 
 use bookokrat::markdown::{
-    Block, Document, Inline, LinkType, ListKind, Node, Script, Style, TableAlignment, TableCell,
-    TableCellContent, TableRow, Text, TextOrInline,
+    Block, BlockAlign, Document, Inline, LinkType, ListKind, Node, Script, Style, TableAlignment,
+    TableCell, TableCellContent, TableRow, Text, TextOrInline,
 };
 use bookokrat::parsing::html_to_markdown::script_as_text;
 use serde::Serialize;
@@ -15,6 +15,14 @@ use std::path::{Component, Path, PathBuf};
 pub struct NodeDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// For a block the book sets apart in a box: its place in the run of
+    /// such blocks it stands in (`only`, `first`, `middle` or `last`), which
+    /// the page draws as one box.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub callout: Option<&'static str>,
+    /// `center` or `end` where the book sets the block's lines that way.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aligned: Option<&'static str>,
     #[serde(flatten)]
     pub block: BlockDto,
 }
@@ -138,7 +146,23 @@ impl Converter<'_> {
     }
 
     fn nodes(&self, nodes: &[Node]) -> Vec<NodeDto> {
-        nodes.iter().map(|n| self.node(n)).collect()
+        let set_off = |at: usize| nodes.get(at).is_some_and(|node| node.look.set_off);
+        nodes
+            .iter()
+            .enumerate()
+            .map(|(at, node)| {
+                let mut dto = self.node(node);
+                if node.look.set_off {
+                    dto.callout = Some(match (at > 0 && set_off(at - 1), set_off(at + 1)) {
+                        (false, false) => "only",
+                        (false, true) => "first",
+                        (true, true) => "middle",
+                        (true, false) => "last",
+                    });
+                }
+                dto
+            })
+            .collect()
     }
 
     fn node(&self, node: &Node) -> NodeDto {
@@ -213,6 +237,11 @@ impl Converter<'_> {
         };
         NodeDto {
             id: node.id.clone(),
+            callout: None,
+            aligned: node.look.align.map(|align| match align {
+                BlockAlign::Center => "center",
+                BlockAlign::End => "end",
+            }),
             block,
         }
     }

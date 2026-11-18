@@ -451,6 +451,7 @@ mod tests {
             },
             source_range: 0..100,
             id: None,
+            look: Default::default(),
         };
 
         let doc = Document {
@@ -553,6 +554,7 @@ With multiple lines.
                 },
                 source_range: 0..100,
                 id: None,
+                look: Default::default(),
             }],
         };
 
@@ -618,6 +620,7 @@ Blue highlight
                 },
                 source_range: 0..100,
                 id: None,
+                look: Default::default(),
             }],
         };
 
@@ -684,6 +687,7 @@ fn main() {
                 },
                 source_range: 0..100,
                 id: None,
+                look: Default::default(),
             }],
         };
 
@@ -750,6 +754,7 @@ fn main() {
                 },
                 source_range: 0..100,
                 id: None,
+                look: Default::default(),
             }],
         };
 
@@ -819,6 +824,7 @@ fn add(a: i32, b: i32) -> i32 {
             },
             source_range: 0..100,
             id: None,
+            look: Default::default(),
         };
 
         let doc1 = Document {

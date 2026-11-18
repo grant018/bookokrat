@@ -2520,6 +2520,7 @@ mod tests {
             block: Block::Paragraph { content },
             source_range: 0..0,
             id: None,
+            look: Default::default(),
         }
     }
 

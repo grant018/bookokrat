@@ -1,14 +1,17 @@
 use crate::markdown::{
-    Block, DefinitionListItem, Document, HeadingLevel, Inline, Node, Script, Style, Text, TextNode,
-    TextOrInline,
+    Block, BlockAlign, BlockLook, DefinitionListItem, Document, HeadingLevel, Inline, Node, Script,
+    Style, Text, TextNode, TextOrInline,
 };
 use crate::mathml_renderer::{MathMLParser, mathml_to_ascii};
+use crate::parsing::book_styles::{self, Align, Declared, Element, StyleSheet};
 use html5ever::parse_document;
 use html5ever::tendril::TendrilSink;
 use markup5ever_rcdom::{NodeData, RcDom};
 use regex::Regex;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 static SELF_CLOSING_NON_VOID_RE: LazyLock<Regex> = LazyLock::new(|| {
     // In XHTML, tags like <title/> and <p/> are valid self-closing tags.
@@ -305,19 +308,167 @@ impl LayoutTableAnalysis {
 /// ```
 pub struct HtmlToMarkdownConverter {
     keep_scripts: bool,
+    styles: Option<Arc<StyleSheet>>,
+    /// What the styles say about each element looked at so far, by the
+    /// element's address in the chapter being converted.
+    declared: RefCell<HashMap<usize, Declared>>,
 }
 
 impl HtmlToMarkdownConverter {
     pub fn new() -> Self {
         HtmlToMarkdownConverter {
             keep_scripts: false,
+            styles: None,
+            declared: RefCell::default(),
         }
     }
 
     /// A converter for a reader that can set text above and below the line:
     /// `<sup>` and `<sub>` text is kept as it is and marked with its `Script`.
     pub fn keeping_scripts() -> Self {
-        HtmlToMarkdownConverter { keep_scripts: true }
+        HtmlToMarkdownConverter {
+            keep_scripts: true,
+            ..Self::new()
+        }
+    }
+
+    /// Makes the converter keep what the book's style sheets (and `style`
+    /// attributes) say about the text: bold, italic and struck-through words
+    /// given by a class, and each paragraph's `BlockLook`. The blocks made
+    /// are the same ones as without the styles.
+    pub fn styled_by(mut self, styles: Arc<StyleSheet>) -> Self {
+        self.styles = Some(styles);
+        self
+    }
+
+    fn parent_of(node: &Rc<markup5ever_rcdom::Node>) -> Option<Rc<markup5ever_rcdom::Node>> {
+        let above = node.parent.take();
+        let parent = above.as_ref().and_then(|above| above.upgrade());
+        node.parent.set(above);
+        parent
+    }
+
+    fn element_of(node: &Rc<markup5ever_rcdom::Node>) -> Option<Element> {
+        let NodeData::Element { name, attrs, .. } = &node.data else {
+            return None;
+        };
+        let attrs = attrs.borrow();
+        let value = |wanted: &str| {
+            attrs
+                .iter()
+                .find(|attr| attr.name.local.as_ref() == wanted)
+                .map(|attr| &*attr.value)
+        };
+        Some(Element {
+            tag: name.local.as_ref().to_ascii_lowercase(),
+            id: value("id").map(str::to_string),
+            classes: value("class")
+                .map(|classes| classes.split_whitespace().map(str::to_string).collect())
+                .unwrap_or_default(),
+        })
+    }
+
+    fn elements_above(node: &Rc<markup5ever_rcdom::Node>) -> Vec<Element> {
+        let mut found = Vec::new();
+        let mut above = Self::parent_of(node);
+        while let Some(parent) = above {
+            found.extend(Self::element_of(&parent));
+            above = Self::parent_of(&parent);
+        }
+        found
+    }
+
+    fn declared_for(&self, node: &Rc<markup5ever_rcdom::Node>) -> Declared {
+        let Some(styles) = &self.styles else {
+            return Declared::default();
+        };
+        let address = Rc::as_ptr(node) as usize;
+        if let Some(known) = self.declared.borrow().get(&address) {
+            return *known;
+        }
+        let Some(element) = Self::element_of(node) else {
+            return Declared::default();
+        };
+        let mut declared = styles.declared(&element, || Self::elements_above(node));
+        if let NodeData::Element { attrs, .. } = &node.data {
+            if let Some(own) = self.get_attr_value(attrs, "style") {
+                declared = declared.overlaid_with(book_styles::declarations(&own));
+            }
+        }
+        self.declared.borrow_mut().insert(address, declared);
+        declared
+    }
+
+    fn restyled(current: Option<Style>, declared: &Declared) -> Option<Style> {
+        if current == Some(Style::Code) {
+            return current;
+        }
+        if declared.bold == Some(true) {
+            return Some(Style::Strong);
+        }
+        if declared.italic == Some(true) {
+            return Some(Style::Emphasis);
+        }
+        if declared.struck == Some(true) {
+            return Some(Style::Strikethrough);
+        }
+        match current {
+            Some(Style::Strong) if declared.bold == Some(false) => None,
+            Some(Style::Emphasis) if declared.italic == Some(false) => None,
+            other => other,
+        }
+    }
+
+    /// The style a block's text starts in: what the elements around the
+    /// block hand down to it. A heading's weight is the heading's own.
+    fn inherited_style(&self, node: &Rc<markup5ever_rcdom::Node>) -> Option<Style> {
+        self.styles.as_ref()?;
+        let mut bold = None;
+        let mut italic = None;
+        let mut above = Self::parent_of(node);
+        while let Some(parent) = above {
+            if bold.is_some() && italic.is_some() {
+                break;
+            }
+            if let NodeData::Element { name, .. } = &parent.data {
+                if matches!(name.local.as_ref(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+                    break;
+                }
+            }
+            let declared = self.declared_for(&parent);
+            bold = bold.or(declared.bold);
+            italic = italic.or(declared.italic);
+            above = Self::parent_of(&parent);
+        }
+        if bold == Some(true) {
+            Some(Style::Strong)
+        } else if italic == Some(true) {
+            Some(Style::Emphasis)
+        } else {
+            None
+        }
+    }
+
+    fn block_look(&self, node: &Rc<markup5ever_rcdom::Node>) -> BlockLook {
+        if self.styles.is_none() {
+            return BlockLook::default();
+        }
+        let own = self.declared_for(node);
+        let mut align = own.align;
+        let mut above = Self::parent_of(node);
+        while align.is_none() {
+            let Some(parent) = above else { break };
+            align = self.declared_for(&parent).align;
+            above = Self::parent_of(&parent);
+        }
+        BlockLook {
+            set_off: own.set_off(),
+            align: match align {
+                Some(Align::Center) => Some(BlockAlign::Center),
+                Some(Align::End) => Some(BlockAlign::End),
+                Some(Align::Start) | None => None,
+            },
+        }
     }
 
     fn text_node(&self, content: String, context: &ProcessingContext) -> TextNode {
@@ -488,7 +639,9 @@ impl HtmlToMarkdownConverter {
             .unwrap();
 
         let mut document = Document::new();
+        self.declared.borrow_mut().clear();
         self.visit_node(&dom.document, &mut document);
+        self.declared.borrow_mut().clear();
 
         self.group_dialog_paragraphs(&mut document);
 
@@ -599,6 +752,7 @@ impl HtmlToMarkdownConverter {
                     }
                 } else if self.has_only_inline_content(node) {
                     let blocks = self.extract_formatted_content_as_blocks(node, false);
+                    let look = self.block_look(node);
                     for mut block_node in blocks {
                         let should_add = match &block_node.block {
                             Block::Paragraph { content } => !content.is_empty(),
@@ -606,6 +760,9 @@ impl HtmlToMarkdownConverter {
                             _ => true,
                         };
                         if should_add {
+                            if matches!(block_node.block, Block::Paragraph { .. }) {
+                                block_node.look = look;
+                            }
                             if matches!(block_node.block, Block::Paragraph { .. })
                                 && block_node.id.is_none()
                             {
@@ -734,6 +891,7 @@ impl HtmlToMarkdownConverter {
         let blocks = self.extract_formatted_content_as_blocks(node, false);
 
         let paragraph_id = self.get_attr_value(attrs, "id");
+        let look = self.block_look(node);
 
         for mut block_node in blocks {
             let should_add = match &block_node.block {
@@ -745,6 +903,7 @@ impl HtmlToMarkdownConverter {
             if should_add {
                 if matches!(block_node.block, Block::Paragraph { .. }) {
                     block_node.id = paragraph_id.clone();
+                    block_node.look = look;
                 }
                 document.blocks.push(block_node);
             }
@@ -2185,7 +2344,7 @@ impl HtmlToMarkdownConverter {
         let mode = ContentCollectionMode::FlatText;
         let context = ProcessingContext {
             in_table: false,
-            current_style: None,
+            current_style: self.inherited_style(node),
             text_transform: None,
         };
         self.collect_content(node, mode, context).into_text()
@@ -2199,7 +2358,7 @@ impl HtmlToMarkdownConverter {
         let mode = ContentCollectionMode::FlatText;
         let context = ProcessingContext {
             in_table,
-            current_style: None,
+            current_style: self.inherited_style(node),
             text_transform: None,
         };
         self.collect_content(node, mode, context).into_text()
@@ -2213,7 +2372,7 @@ impl HtmlToMarkdownConverter {
         let mode = ContentCollectionMode::StructuredBlocks;
         let context = ProcessingContext {
             in_table,
-            current_style: None,
+            current_style: self.inherited_style(node),
             text_transform: None,
         };
         self.collect_content(node, mode, context).into_blocks()
@@ -2295,7 +2454,7 @@ impl HtmlToMarkdownConverter {
         text: &mut Text,
         context: ProcessingContext,
     ) {
-        let new_context = self.get_element_context(tag_name, context.clone());
+        let new_context = self.get_element_context(tag_name, node, context.clone());
 
         match tag_name {
             "a" => {
@@ -2398,7 +2557,7 @@ impl HtmlToMarkdownConverter {
         current_text: &mut Text,
         context: ProcessingContext,
     ) {
-        let new_context = self.get_element_context(tag_name, context.clone());
+        let new_context = self.get_element_context(tag_name, node, context.clone());
 
         match tag_name {
             "a" => {
@@ -2805,6 +2964,7 @@ impl HtmlToMarkdownConverter {
     fn get_element_context(
         &self,
         tag_name: &str,
+        node: &Rc<markup5ever_rcdom::Node>,
         mut context: ProcessingContext,
     ) -> ProcessingContext {
         context.current_style = match tag_name {
@@ -2814,6 +2974,9 @@ impl HtmlToMarkdownConverter {
             "del" | "s" | "strike" => Some(Style::Strikethrough),
             _ => context.current_style,
         };
+        if self.styles.is_some() {
+            context.current_style = Self::restyled(context.current_style, &self.declared_for(node));
+        }
         context
     }
 

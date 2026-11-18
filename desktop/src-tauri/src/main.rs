@@ -18,6 +18,7 @@ use bookokrat::keybindings::context::KeyContext;
 use bookokrat::keybindings::notation::KeyInput;
 use bookokrat::markdown::{Block, Document};
 use bookokrat::marks::MarkLocation;
+use bookokrat::parsing::book_styles::{self, StyleSheet};
 use bookokrat::parsing::html_to_markdown::HtmlToMarkdownConverter;
 use bookokrat::parsing::toc_parser::TocParser;
 use bookokrat::settings::{RuntimeSettings, Settings};
@@ -81,6 +82,9 @@ struct OpenBook {
     chapter_paths: HashMap<PathBuf, (usize, usize)>,
     /// The block each file of a chapter starts at, once counted.
     part_starts: HashMap<usize, Vec<usize>>,
+    /// The book's style sheets as read so far, by the files and the CSS
+    /// written in place that a chapter draws them from.
+    styles: HashMap<String, Arc<StyleSheet>>,
     /// The whole book's text, read the first time it is searched.
     engine: Option<search::Index>,
     /// Each chapter's title and number of words, counted along with `engine`.
@@ -102,6 +106,7 @@ impl OpenBook {
             chapter_titles: self.chapter_titles.clone(),
             chapter_paths: self.chapter_paths.clone(),
             part_starts: self.part_starts.clone(),
+            styles: self.styles.clone(),
             engine: None,
             words: None,
         }
@@ -117,6 +122,66 @@ impl OpenBook {
             path,
             HtmlToMarkdownConverter::keeping_scripts().convert(&html),
         ))
+    }
+
+    /// The file as the page shows it: the blocks of `document`, with what
+    /// the book's style sheets say about the text kept.
+    fn styled_document(
+        &mut self,
+        spine_index: usize,
+    ) -> Result<(Option<PathBuf>, Document), String> {
+        if !self.doc.set_current_chapter(spine_index) {
+            return Err(format!("The book has no file {spine_index}"));
+        }
+        let path = self.doc.get_current_path();
+        let (html, _mime) = self.doc.get_current_str().unwrap_or_default();
+        let styles = self.styles_of(path.as_deref(), &html);
+        Ok((
+            path,
+            HtmlToMarkdownConverter::keeping_scripts()
+                .styled_by(styles)
+                .convert(&html),
+        ))
+    }
+
+    fn styles_of(&mut self, chapter_path: Option<&Path>, html: &str) -> Arc<StyleSheet> {
+        let sources = book_styles::sources(html);
+        let folder = chapter_path
+            .and_then(Path::parent)
+            .unwrap_or_else(|| Path::new(""));
+        let files: Vec<PathBuf> = sources
+            .linked
+            .iter()
+            .map(|href| {
+                let href = href.split(['#', '?']).next().unwrap_or(href);
+                dto::normalize(&folder.join(dto::percent_decode(href)))
+            })
+            .collect();
+        let mut key = String::new();
+        for file in &files {
+            key.push_str(&file.to_string_lossy());
+            key.push('\n');
+        }
+        for css in &sources.embedded {
+            key.push('\n');
+            key.push_str(css);
+        }
+        if let Some(known) = self.styles.get(&key) {
+            return known.clone();
+        }
+        let mut sheet = StyleSheet::default();
+        for file in &files {
+            match self.doc.get_resource_str_by_path(file) {
+                Some(css) => sheet.add(&css),
+                None => log::warn!("Failed to read the style sheet {file:?} from the book"),
+            }
+        }
+        for css in &sources.embedded {
+            sheet.add(css);
+        }
+        let sheet = Arc::new(sheet);
+        self.styles.insert(key, sheet.clone());
+        sheet
     }
 
     fn part_starts(&mut self, chapter: usize) -> Result<Vec<usize>, String> {
@@ -724,6 +789,7 @@ fn open_epub(state: &AppState, path: String) -> Result<BookMeta, String> {
         chapter_of,
         chapter_paths,
         part_starts: HashMap::new(),
+        styles: HashMap::new(),
         engine: None,
         words: None,
     };
@@ -787,7 +853,7 @@ fn load_chapter_now(state: &AppState, index: usize) -> Result<ChapterDto, String
     let mut starts = Vec::with_capacity(parts.len());
     let mut heading = None;
     for part in parts {
-        let (path, document) = book.document(part)?;
+        let (path, document) = book.styled_document(part)?;
         if heading.is_none() {
             heading = first_heading(&document);
         }

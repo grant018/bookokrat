@@ -10,6 +10,23 @@ pub struct Node {
     pub block: Block,
     pub source_range: Range<usize>,
     pub id: Option<String>, // HTML id attribute for anchor resolution
+    pub look: BlockLook,
+}
+
+/// How the book's style sheet sets a block apart from the text around it.
+/// Only filled in by a converter given the book's styles
+/// (`HtmlToMarkdownConverter::styled_by`).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct BlockLook {
+    /// Shown in a box of its own, as a pull quote or a callout is.
+    pub set_off: bool,
+    pub align: Option<BlockAlign>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BlockAlign {
+    Center,
+    End,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -203,6 +220,7 @@ impl Node {
             block,
             source_range,
             id,
+            look: BlockLook::default(),
         }
     }
 }

@@ -287,6 +287,31 @@
   color: color-mix(in srgb, var(--text) 86%, var(--page));
 }
 
+/* A paragraph the book sets apart in a box of its own, as a pull quote or
+   a quoted tweet. Ones that follow each other make one box. The tint is
+   see-through: the selection is drawn under the text and has to show. */
+.prose p[data-callout] {
+  padding: 0.85em 1.2em;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--heading);
+  font-size: 0.94em;
+  text-align: start;
+  hyphens: manual;
+}
+
+.prose p[data-callout='first'],
+.prose p[data-callout='middle'] {
+  margin-bottom: 0;
+  border-bottom-right-radius: 0;
+}
+
+.prose p[data-callout='middle'],
+.prose p[data-callout='last'] {
+  border-top-right-radius: 0;
+}
+
 .prose ul,
 .prose ol {
   padding-left: 1.6em;

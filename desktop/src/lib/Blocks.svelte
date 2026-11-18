@@ -68,7 +68,7 @@
     if (!opening) return null;
     const index = nodes.findIndex((node) => node.t !== 'h');
     const node = nodes[index];
-    if (index < 1 || node?.t !== 'p') return null;
+    if (index < 1 || node?.t !== 'p' || node.callout || node.aligned) return null;
     const first = node.text[0];
     if (first?.t !== 'text' || first.style || !STARTS_WITH_LETTER.test(first.s)) return null;
     if (plainLength(node.text) < OPENING_MIN_LENGTH) return null;
@@ -99,7 +99,7 @@
   {:else if node.t === 'p' && lead?.index === i}
     <p class="opening" data-node={index} data-child={child} data-anchor={node.id}><span class="lead">{lead.words}</span><Inlines items={lead.rest} /></p>
   {:else if node.t === 'p'}
-    <p class:figure={onlyPictures(node.text)} data-node={index} data-child={child} data-anchor={node.id}><Inlines items={node.text} /></p>
+    <p class:figure={onlyPictures(node.text)} data-callout={node.callout} style:text-align={node.aligned} data-node={index} data-child={child} data-anchor={node.id}><Inlines items={node.text} /></p>
   {:else if node.t === 'code'}
     {@const marked = highlight(node.code, node.lang)}
     <pre class:math={node.lang === 'math'} data-node={index} data-child={child} data-anchor={node.id} data-lang={node.lang}><code>{#if marked}{@html marked}{:else}{node.code}{/if}</code></pre>

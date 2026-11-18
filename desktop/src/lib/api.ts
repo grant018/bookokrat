@@ -43,7 +43,14 @@ export type Block =
   | { t: 'epub'; kind: string; el: string; blocks: Node[] }
   | { t: 'hr' };
 
-export type Node = Block & { id?: string };
+export type Node = Block & {
+  id?: string;
+  /** Set on a block the book puts in a box of its own: its place in the
+      run of such blocks it stands in, which is drawn as one box. */
+  callout?: 'only' | 'first' | 'middle' | 'last';
+  /** Set where the book centres the block's lines or sets them to the end. */
+  aligned?: 'center' | 'end';
+};
 
 export type TocEntry = {
   title: string;
