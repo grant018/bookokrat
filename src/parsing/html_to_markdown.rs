@@ -1,5 +1,5 @@
 use crate::markdown::{
-    Block, DefinitionListItem, Document, HeadingLevel, Inline, Node, Style, Text, TextNode,
+    Block, DefinitionListItem, Document, HeadingLevel, Inline, Node, Script, Style, Text, TextNode,
     TextOrInline,
 };
 use crate::mathml_renderer::{MathMLParser, mathml_to_ascii};
@@ -202,6 +202,23 @@ impl ContentResult {
     }
 }
 
+/// How a terminal shows text set above or below the line: in Unicode
+/// superscript or subscript letters where they all exist, otherwise marked
+/// the way TeX does (`^{[4]}`).
+pub fn script_as_text(content: &str, script: Script) -> String {
+    let (unicode, mark) = match script {
+        Script::Super => (MathMLParser::try_unicode_superscript(content, true), '^'),
+        Script::Sub => (MathMLParser::try_unicode_subscript(content, true), '_'),
+    };
+    unicode.unwrap_or_else(|| {
+        if content.len() == 1 {
+            format!("{mark}{content}")
+        } else {
+            format!("{mark}{{{content}}}")
+        }
+    })
+}
+
 enum MathContent {
     Inline(String),
     Block(String),
@@ -286,11 +303,39 @@ impl LayoutTableAnalysis {
 /// let markdown_doc = converter.convert(html_content);
 /// # }
 /// ```
-pub struct HtmlToMarkdownConverter {}
+pub struct HtmlToMarkdownConverter {
+    keep_scripts: bool,
+}
 
 impl HtmlToMarkdownConverter {
     pub fn new() -> Self {
-        HtmlToMarkdownConverter {}
+        HtmlToMarkdownConverter {
+            keep_scripts: false,
+        }
+    }
+
+    /// A converter for a reader that can set text above and below the line:
+    /// `<sup>` and `<sub>` text is kept as it is and marked with its `Script`.
+    pub fn keeping_scripts() -> Self {
+        HtmlToMarkdownConverter { keep_scripts: true }
+    }
+
+    fn text_node(&self, content: String, context: &ProcessingContext) -> TextNode {
+        let style = context.current_style.clone();
+        let script = match context.text_transform {
+            Some(TextTransform::Subscript) => Script::Sub,
+            Some(TextTransform::Superscript) => Script::Super,
+            None => return TextNode::new(content, style),
+        };
+        if self.keep_scripts {
+            TextNode {
+                content,
+                style,
+                script: Some(script),
+            }
+        } else {
+            TextNode::new(script_as_text(&content, script), style)
+        }
     }
 
     fn attach_container_id_or_insert_anchor(
@@ -1939,8 +1984,12 @@ impl HtmlToMarkdownConverter {
         li_node: &Rc<markup5ever_rcdom::Node>,
     ) -> crate::markdown::ListItem {
         let content = self.extract_container_blocks(li_node);
+        let id = match &li_node.data {
+            NodeData::Element { attrs, .. } => self.get_attr_value(attrs, "id"),
+            _ => None,
+        };
 
-        crate::markdown::ListItem::new(content)
+        crate::markdown::ListItem::new_with_id(content, id)
     }
 
     fn extract_definition_content(&mut self, dd_node: &Rc<markup5ever_rcdom::Node>) -> Vec<Node> {
@@ -2183,31 +2232,7 @@ impl HtmlToMarkdownConverter {
                 if let Some(normalized) =
                     self.normalize_text_content(&content, text, context.current_style.clone())
                 {
-                    let transformed_text =
-                        match context.text_transform {
-                            Some(TextTransform::Subscript) => {
-                                MathMLParser::try_unicode_subscript(&normalized, true)
-                                    .unwrap_or_else(|| {
-                                        if normalized.len() == 1 {
-                                            format!("_{normalized}")
-                                        } else {
-                                            format!("_{{{normalized}}}")
-                                        }
-                                    })
-                            }
-                            Some(TextTransform::Superscript) => {
-                                MathMLParser::try_unicode_superscript(&normalized, true)
-                                    .unwrap_or_else(|| {
-                                        if normalized.len() == 1 {
-                                            format!("^{normalized}")
-                                        } else {
-                                            format!("^{{{normalized}}}")
-                                        }
-                                    })
-                            }
-                            None => normalized,
-                        };
-                    let text_node = TextNode::new(transformed_text, context.current_style.clone());
+                    let text_node = self.text_node(normalized, &context);
                     text.push_text(text_node);
                 }
             }
@@ -2239,31 +2264,7 @@ impl HtmlToMarkdownConverter {
                     current_text,
                     context.current_style.clone(),
                 ) {
-                    let transformed_text =
-                        match context.text_transform {
-                            Some(TextTransform::Subscript) => {
-                                MathMLParser::try_unicode_subscript(&normalized, true)
-                                    .unwrap_or_else(|| {
-                                        if normalized.len() == 1 {
-                                            format!("_{normalized}")
-                                        } else {
-                                            format!("_{{{normalized}}}")
-                                        }
-                                    })
-                            }
-                            Some(TextTransform::Superscript) => {
-                                MathMLParser::try_unicode_superscript(&normalized, true)
-                                    .unwrap_or_else(|| {
-                                        if normalized.len() == 1 {
-                                            format!("^{normalized}")
-                                        } else {
-                                            format!("^{{{normalized}}}")
-                                        }
-                                    })
-                            }
-                            None => normalized,
-                        };
-                    let text_node = TextNode::new(transformed_text, context.current_style.clone());
+                    let text_node = self.text_node(normalized, &context);
                     current_text.push_text(text_node);
                 }
             }

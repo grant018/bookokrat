@@ -56,10 +56,20 @@ pub enum Style {
     Strikethrough,
 }
 
+/// Text set above or below the line, as `<sup>` and `<sub>` are. Only kept by
+/// a converter made with `HtmlToMarkdownConverter::keeping_scripts`; otherwise
+/// such text is written out the way a terminal can show it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Script {
+    Super,
+    Sub,
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct TextNode {
     pub content: String,
     pub style: Option<Style>,
+    pub script: Option<Script>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -119,6 +129,7 @@ pub enum ListKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListItem {
     pub content: Vec<Node>,
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -210,13 +221,21 @@ impl Document {
 
 impl TextNode {
     pub fn new(content: String, style: Option<Style>) -> Self {
-        Self { content, style }
+        Self {
+            content,
+            style,
+            script: None,
+        }
     }
 }
 
 impl ListItem {
     pub fn new(content: Vec<Node>) -> Self {
-        ListItem { content }
+        ListItem { content, id: None }
+    }
+
+    pub fn new_with_id(content: Vec<Node>, id: Option<String>) -> Self {
+        ListItem { content, id }
     }
 }
 

@@ -2514,6 +2514,7 @@ mod tests {
         content.push(TextOrInline::Text(TextNode {
             content: text.to_string(),
             style: None,
+            script: None,
         }));
         Node {
             block: Block::Paragraph { content },

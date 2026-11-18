@@ -445,6 +445,7 @@ mod tests {
                 content: vec![TextOrInline::Text(TextNode {
                     content: text.to_string(),
                     style: None,
+                    script: None,
                 })]
                 .into(),
             },
@@ -546,6 +547,7 @@ With multiple lines.
                     content: vec![TextOrInline::Text(TextNode {
                         content: "Highlighted paragraph text.".to_string(),
                         style: None,
+                        script: None,
                     })]
                     .into(),
                 },
@@ -811,6 +813,7 @@ fn add(a: i32, b: i32) -> i32 {
                 content: vec![TextOrInline::Text(TextNode {
                     content: text.to_string(),
                     style: None,
+                    script: None,
                 })]
                 .into(),
             },

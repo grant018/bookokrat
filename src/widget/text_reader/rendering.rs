@@ -2354,9 +2354,14 @@ impl crate::markdown_text_reader::MarkdownTextReader {
 
             let mut first_block_line_count = 0;
 
+            if let Some(id) = &item.id {
+                self.anchor_positions.insert(id.clone(), *total_height);
+            }
+
             // Render the list item content
             // List items can contain multiple blocks (paragraphs, nested lists, etc.)
             for (block_idx, block_node) in item.content.iter().enumerate() {
+                self.extract_and_track_anchors_from_node(block_node, *total_height);
                 if block_idx == 0 {
                     // First block gets the bullet/number prefix
                     match &block_node.block {
