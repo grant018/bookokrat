@@ -1,0 +1,37 @@
+import '@fontsource-variable/literata/opsz.css';
+import '@fontsource-variable/literata/opsz-italic.css';
+import '@fontsource-variable/source-serif-4/opsz.css';
+import '@fontsource-variable/source-serif-4/opsz-italic.css';
+import '@fontsource-variable/newsreader/opsz.css';
+import '@fontsource-variable/newsreader/opsz-italic.css';
+import '@fontsource-variable/eb-garamond/wght.css';
+import '@fontsource-variable/eb-garamond/wght-italic.css';
+import '@fontsource/charis-sil/400.css';
+import '@fontsource/charis-sil/400-italic.css';
+import '@fontsource/charis-sil/700.css';
+import '@fontsource/charis-sil/700-italic.css';
+import '@fontsource/libre-caslon-text/400.css';
+import '@fontsource/libre-caslon-text/400-italic.css';
+import '@fontsource/libre-caslon-text/700.css';
+import '@fontsource-variable/merriweather/opsz.css';
+import '@fontsource-variable/merriweather/opsz-italic.css';
+import '@fontsource-variable/vollkorn/wght.css';
+import '@fontsource-variable/vollkorn/wght-italic.css';
+import '@fontsource-variable/gelasio/wght.css';
+import '@fontsource-variable/gelasio/wght-italic.css';
+import './fonts/tex-gyre-pagella/index.css';
+import '@fontsource-variable/atkinson-hyperlegible-next/wght.css';
+import '@fontsource-variable/atkinson-hyperlegible-next/wght-italic.css';
+import '@fontsource-variable/source-sans-3/wght.css';
+import '@fontsource-variable/source-sans-3/wght-italic.css';
+import '@fontsource-variable/inter/opsz.css';
+import '@fontsource-variable/jetbrains-mono/index.css';
+import './app.css';
+import './reader.css';
+import { mount } from 'svelte';
+import App from './App.svelte';
+
+const target = document.getElementById('app');
+if (!target) throw new Error('Missing #app mount point');
+
+export default mount(App, { target });

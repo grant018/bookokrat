@@ -1,0 +1,441 @@
+/* Typography for book text. */
+.prose {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 64px 40px 40vh;
+  font-family: var(--font-reading);
+  font-size: var(--reading-size);
+  line-height: var(--reading-leading);
+  font-size-adjust: var(--letter-height, none);
+  font-optical-sizing: auto;
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures;
+  font-variant-numeric: var(--reading-figures, oldstyle-nums);
+  hanging-punctuation: first;
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+}
+
+/* The web view fills the gaps of a selection (between paragraphs, past
+   the ends of lines) out to the edges of the nearest positioned or
+   scrolling box. Positioned, the text is that box, so a selection stays
+   inside its column instead of running the width of the sheet. */
+.prose {
+  position: relative;
+}
+
+.prose.justify {
+  text-align: justify;
+  hyphens: auto;
+}
+
+.prose > :first-child,
+.prose > .run[data-start='0'] > :first-child {
+  margin-top: 0;
+}
+
+.prose p,
+.prose ul,
+.prose ol,
+.prose dl,
+.prose blockquote,
+.prose pre,
+.prose .table-scroll,
+.prose .epub-block {
+  margin: 0 0 1.2em;
+}
+
+.prose li > :last-child,
+.prose dd > :last-child,
+.prose td > :last-child,
+.prose th > :last-child,
+.prose blockquote > :last-child,
+.prose .epub-block > :last-child {
+  margin-bottom: 0;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  color: var(--heading);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: start;
+  text-wrap: balance;
+  hyphens: manual;
+  margin: 1.6em 0 0.6em;
+}
+
+.prose h1 {
+  font-size: 2.6em;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.012em;
+  margin-bottom: 1em;
+}
+
+/* A chapter heading that names its number ("Chapter 1: The Discovery") is
+   set as a small label over the title. The separator stays in the text, so
+   positions in the heading still count the same characters. */
+.prose .eyebrow {
+  display: block;
+  margin-bottom: 0.7em;
+  font-size: 0.33em;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0.16em;
+  font-variant-caps: all-small-caps;
+  color: var(--accent);
+}
+
+.prose .eyebrow .sep {
+  color: transparent;
+}
+
+/* The first paragraph of a chapter: its opening words in small capitals
+   and, unless turned off, a three-line initial. */
+.prose .lead {
+  font-variant-caps: small-caps;
+  letter-spacing: 0.04em;
+  color: var(--heading);
+}
+
+@supports (initial-letter: 3) or (-webkit-initial-letter: 3) {
+  .prose.dropcaps p.opening::first-letter {
+    -webkit-initial-letter: 3;
+    initial-letter: 3;
+    margin-right: 0.55em;
+    font-weight: 500;
+    color: var(--heading);
+  }
+}
+
+.prose h2 {
+  font-size: 1.55em;
+}
+
+.prose h3 {
+  font-size: 1.25em;
+}
+
+.prose h4,
+.prose h5,
+.prose h6 {
+  font-size: 1em;
+}
+
+.prose a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.prose a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+/* Footnote markers and the like, without opening up the line they sit on. */
+.prose sup,
+.prose sub {
+  font-size: 0.72em;
+  line-height: 0;
+}
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+
+.prose :not(pre) > code {
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: var(--raised);
+}
+
+.prose pre {
+  padding: 14px 16px;
+  border-radius: 6px;
+  background: var(--chrome);
+  border: 1px solid var(--line);
+  line-height: 1.55;
+  overflow-x: auto;
+  text-align: start;
+  hyphens: manual;
+}
+
+/* A formula the book set apart, drawn by the core in rows of characters:
+   it stands alone in the column like a displayed equation. */
+.prose pre.math {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--heading);
+  line-height: 1.25;
+}
+
+/* Program text, coloured by lib/code.ts. */
+.prose .hljs-comment,
+.prose .hljs-quote {
+  color: var(--syntax-comment);
+  font-style: italic;
+}
+
+.prose .hljs-keyword,
+.prose .hljs-selector-tag,
+.prose .hljs-doctag,
+.prose .hljs-section {
+  color: var(--syntax-keyword);
+}
+
+.prose .hljs-string,
+.prose .hljs-addition,
+.prose .hljs-attr-value {
+  color: var(--syntax-string);
+}
+
+.prose .hljs-number,
+.prose .hljs-literal,
+.prose .hljs-symbol,
+.prose .hljs-bullet,
+.prose .hljs-link {
+  color: var(--syntax-number);
+}
+
+.prose .hljs-title,
+.prose .hljs-title.function_,
+.prose .hljs-selector-id,
+.prose .hljs-selector-class {
+  color: var(--syntax-function);
+}
+
+.prose .hljs-type,
+.prose .hljs-built_in,
+.prose .hljs-title.class_,
+.prose .hljs-attr,
+.prose .hljs-attribute {
+  color: var(--syntax-type);
+}
+
+.prose .hljs-variable,
+.prose .hljs-template-variable,
+.prose .hljs-name,
+.prose .hljs-tag,
+.prose .hljs-deletion {
+  color: var(--syntax-variable);
+}
+
+.prose .hljs-regexp,
+.prose .hljs-subst,
+.prose .hljs-char.escape_,
+.prose .hljs-operator {
+  color: var(--syntax-escape);
+}
+
+.prose .hljs-meta,
+.prose .hljs-meta .hljs-keyword {
+  color: var(--syntax-meta);
+}
+
+.prose .hljs-emphasis {
+  font-style: italic;
+}
+
+.prose .hljs-strong {
+  font-weight: 600;
+}
+
+/* The chapter as the book has it (the raw view). */
+.prose pre.raw {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  line-height: 1.6;
+}
+
+.prose img {
+  cursor: zoom-in;
+}
+
+/* The block a search result or a bookmark led to, shown for a moment. */
+.prose .arrived {
+  animation: arrived 1400ms ease-out;
+}
+
+@keyframes arrived {
+  from {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  to {
+    background: transparent;
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+.prose blockquote {
+  padding-left: 1.2em;
+  border-left: 2px solid var(--line);
+  color: color-mix(in srgb, var(--text) 86%, var(--page));
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.6em;
+}
+
+.prose li {
+  margin: 0.25em 0;
+}
+
+.prose dt {
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.prose dd {
+  margin: 0.2em 0 0.8em 1.6em;
+}
+
+.prose hr {
+  width: 30%;
+  margin: 2.4em auto;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.prose img {
+  max-width: 100%;
+  max-height: 80vh;
+  height: auto;
+  vertical-align: middle;
+}
+
+.prose p.figure {
+  text-align: center;
+}
+
+.prose .table-scroll {
+  overflow-x: auto;
+}
+
+.prose table {
+  border-collapse: collapse;
+  font-size: 0.9em;
+  line-height: 1.5;
+  text-align: start;
+  hyphens: manual;
+}
+
+.prose th,
+.prose td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.prose th {
+  font-weight: 600;
+  color: var(--heading);
+  border-bottom-color: var(--muted);
+}
+
+/* A note shows as a dot in the margin beside its paragraph, a bookmark as
+   its letter; the reader sets these attributes (see lib/annotate.ts). Only
+   the blocks that have one are positioned: positioned blocks by the
+   thousand make the web view slow to move the text below a change. */
+.prose > .run > :is([data-notes], [data-mark]) {
+  position: relative;
+}
+
+.prose > .run > [data-notes]::before {
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--note);
+}
+
+.prose > .run > [data-mark]::after {
+  content: attr(data-mark);
+  position: absolute;
+  left: -38px;
+  top: 0.18em;
+  font: 500 11px / 1.6 var(--font-mono);
+  font-size-adjust: none;
+  letter-spacing: 0;
+  font-variant-caps: normal;
+  color: var(--accent);
+}
+
+/* Normal and visual mode (see lib/vim.ts): boxes placed under and over the text. */
+.vim-active {
+  isolation: isolate;
+}
+
+.vim-active > .prose {
+  position: relative;
+  z-index: 1;
+}
+
+.vim-marks > div,
+.vim-cursor {
+  position: absolute;
+  pointer-events: none;
+}
+
+.vim-marks .selection {
+  background: var(--selection);
+  border-radius: 2px;
+}
+
+.vim-marks .yank {
+  background: color-mix(in srgb, var(--accent) 45%, var(--page));
+  border-radius: 2px;
+}
+
+.vim-marks .under {
+  background: var(--page);
+}
+
+/* Blended as a difference, this color turns the page into the text color
+   and the letter under it into the page color. */
+.vim-cursor {
+  z-index: 2;
+  background: var(--cursor);
+  mix-blend-mode: difference;
+}
+
+/* Over the pages of a PDF the boxes lie on top of the picture: the
+   selection is seen through, and the cursor inverts the page itself. */
+.pdf .vim-marks > div {
+  z-index: 3;
+}
+
+.pdf .vim-marks .selection {
+  background: color-mix(in srgb, var(--link) 34%, transparent);
+}
+
+.pdf .vim-marks .yank {
+  background: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.pdf .vim-marks .under {
+  display: none;
+}
+
+.pdf .vim-cursor {
+  z-index: 4;
+  background: #fff;
+}

@@ -1,0 +1,100 @@
+/* Colors are set at startup from the chosen theme (see lib/themes.ts).
+   These are Kanagawa Dragon's, so the first paint is not unstyled. */
+:root {
+  --page: #181616;
+  --chrome: #121111;
+  --raised: #2d2b2b;
+  --line: #3b3a39;
+  --text: #c5c9c5;
+  --heading: #d6d9d6;
+  --muted: #8e908e;
+  --accent: #c4b28a;
+  --link: #8ba4b0;
+  --note: #a292a3;
+  --selection: #2d4f67;
+  --cursor: #dddfdb;
+  --error: #c4746e;
+  --shadow: rgb(0 0 0 / 0.4);
+
+  /* Quieter steps between the theme's colors, for the chrome around the page. */
+  --hairline: color-mix(in srgb, var(--text) 8%, var(--page));
+  --soft: color-mix(in srgb, var(--text) 7%, var(--chrome));
+  --quiet: color-mix(in srgb, var(--text) 86%, var(--chrome));
+  --ring: color-mix(in srgb, var(--accent) 55%, var(--chrome));
+
+  --font-reading: 'Literata Variable', Georgia, serif;
+  --font-ui: 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+  --reading-size: 18px;
+  --reading-leading: 1.72;
+  --measure: 68ch;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--chrome);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* An opaque selection colour is thinned by the web view until it would
+   look right over white, which over a dark page leaves it nearly black.
+   A colour that is already a touch transparent is used as given. */
+::selection {
+  background: color-mix(in srgb, var(--selection) 99%, transparent);
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 17px;
+  min-width: 8px;
+  padding: 0 5px;
+  display: inline-block;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--soft);
+  color: var(--accent);
+}
+
+/* How far a book on the library shelf is turned and raised. They are typed
+   so that they can be animated themselves: the turn then runs as ordinary
+   style changes. Animating `transform` directly hands the motion to the
+   compositor, which on WebKitGTK showed the old pose for one frame as it
+   handed the finished motion back. */
+@property --tilt {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@property --lift {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
