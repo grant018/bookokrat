@@ -4,6 +4,7 @@ mod dto;
 #[cfg(target_os = "linux")]
 mod harness;
 mod history;
+mod instance;
 mod lookup;
 mod notes;
 mod pdf;
@@ -2477,10 +2478,34 @@ fn init_logging() {
 fn main() {
     #[cfg(target_os = "linux")]
     work_around_nvidia_wayland_crash();
+    // A test run is never handed to, or hands its book to, a reader in use.
+    let testing = ["BOOKOKRAT_READER_PERF", "BOOKOKRAT_READER_SCRIPT"]
+        .iter()
+        .any(|name| std::env::var_os(name).is_some());
+    let instance = if testing {
+        None
+    } else {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let target = std::env::args()
+            .skip(1)
+            .find(|a| !a.starts_with('-'))
+            .map(|t| absolute(&cwd, &t));
+        match instance::claim(target.as_deref()) {
+            instance::Claim::First(instance) => instance,
+            instance::Claim::Second => return,
+        }
+    };
     init_logging();
+    let socket = instance.as_ref().map(|i| i.socket.clone());
 
     tauri::Builder::default()
         .manage(AppState::from_env())
+        .setup(move |app| {
+            if let Some(socket) = socket {
+                instance::listen(socket, app.handle().clone());
+            }
+            Ok(())
+        })
         .register_asynchronous_uri_scheme_protocol("bookimg", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || {
@@ -2612,4 +2637,5 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("failed to start the reader");
+    drop(instance);
 }

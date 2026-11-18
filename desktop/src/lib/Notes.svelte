@@ -41,8 +41,6 @@
     onclose: () => void;
   } = $props();
 
-  const DOUBLE_KEY_MS = 1000;
-
   let cursor = $state(0);
   let draft = $state('');
   let listEl = $state<HTMLElement>();
@@ -51,9 +49,6 @@
   /** Words that listed notes and bookmarks must have; null when not filtering. */
   let filter = $state<string | null>(null);
   let scroller: SmoothScroller | undefined;
-  let firstD: ReturnType<typeof setTimeout> | undefined;
-  /** Set once Space is pressed, while the key after it is awaited. */
-  let leader = false;
 
   /** Highlights and notes in reading order, each chapter under its title. */
   let rows = $derived.by((): Row[] => {
@@ -125,34 +120,64 @@
     }
   }
 
+  /** Runs one of the notes list's bindings; false when it has no use for it. */
+  export function handle(action: string): boolean {
+    const row = rows[cursor];
+    switch (action) {
+      case 'move_down':
+        move(1);
+        break;
+      case 'move_up':
+        move(-1);
+        break;
+      case 'scroll_half_down':
+        move(8);
+        break;
+      case 'scroll_half_up':
+        move(-8);
+        break;
+      case 'scroll_page_down':
+        move(16);
+        break;
+      case 'scroll_page_up':
+        move(-16);
+        break;
+      case 'go_top':
+        move(-rows.length);
+        break;
+      case 'go_bottom':
+        move(rows.length);
+        break;
+      case 'select':
+        if (row) onjump(row);
+        break;
+      case 'delete_comment':
+        if (row) ondelete(row);
+        break;
+      case 'export_comments':
+        onexport();
+        break;
+      case 'start_search':
+        void startFilter();
+        break;
+      case 'cancel':
+        if (filter !== null) filter = null;
+        else onclose();
+        break;
+      default:
+        return false;
+    }
+    return true;
+  }
+
+  /** Keys the keymap has no command for here, as the terminal app has them. */
   export function handleKey(token: string) {
     const row = rows[cursor];
-    if (token !== 'd') clearTimeout(firstD);
-    const afterLeader = leader;
-    leader = token === 'Space';
-    if (afterLeader && token === 'e') onexport();
-    else if (token === 'Esc' && filter !== null) filter = null;
-    else if (token === '/') void startFilter();
-    else if (['c', 'C', 'y', 'Y'].includes(token) && row) copyRow(row);
-    else if (token === 'Esc' || token === 'q') onclose();
-    else if (token === 'j' || token === 'Down') move(1);
-    else if (token === 'k' || token === 'Up') move(-1);
-    else if (token === 'C-d' || token === 'PageDown') move(8);
-    else if (token === 'C-u' || token === 'PageUp') move(-8);
-    else if (token === 'G' || token === 'End') move(rows.length);
+    if (['c', 'C', 'y', 'Y'].includes(token) && row) copyRow(row);
+    else if (token === 'q') onclose();
     else if (token === 'Home') move(-rows.length);
-    else if (token === 'Enter' && row) onjump(row);
+    else if (token === 'End') move(rows.length);
     else if ((token === 'a' || token === 'e') && row?.note && row.note.color === null) onedit(row.note);
-    else if (token === 'd' && row) {
-      // `dd`, as in the terminal app: the second press within a moment deletes.
-      if (firstD) {
-        clearTimeout(firstD);
-        firstD = undefined;
-        ondelete(row);
-      } else {
-        firstD = setTimeout(() => (firstD = undefined), DOUBLE_KEY_MS);
-      }
-    }
   }
 
   function onFieldKey(event: KeyboardEvent) {

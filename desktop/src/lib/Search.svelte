@@ -104,16 +104,54 @@
     onjump(hit, query.trim());
   }
 
+  /** Runs one of the results list's bindings; false when it has no use for it. */
+  export function handle(action: string): boolean {
+    switch (action) {
+      case 'move_down':
+        move(1);
+        break;
+      case 'move_up':
+        move(-1);
+        break;
+      case 'scroll_half_down':
+        move(8);
+        break;
+      case 'scroll_half_up':
+        move(-8);
+        break;
+      case 'scroll_page_down':
+        move(16);
+        break;
+      case 'scroll_page_up':
+        move(-16);
+        break;
+      case 'go_top':
+        move(-hits.length);
+        break;
+      case 'go_bottom':
+        move(hits.length);
+        break;
+      case 'select':
+        go(cursor);
+        break;
+      case 'start_search':
+        fieldEl?.focus();
+        break;
+      case 'cancel':
+        onclose();
+        break;
+      default:
+        return false;
+    }
+    return true;
+  }
+
+  /** Keys the keymap has no command for here. */
   export function handleKey(token: string) {
-    if (token === 'Esc' || token === 'q') onclose();
-    else if (token === 'j' || token === 'Down') move(1);
-    else if (token === 'k' || token === 'Up') move(-1);
-    else if (token === 'C-d' || token === 'PageDown') move(8);
-    else if (token === 'C-u' || token === 'PageUp') move(-8);
-    else if (token === 'G' || token === 'End') move(hits.length);
-    else if (token === 'g' || token === 'Home') move(-hits.length);
-    else if (token === 'Enter') go(cursor);
-    else if (token === '/' || token === 'i') fieldEl?.focus();
+    if (token === 'q') onclose();
+    else if (token === 'Home') move(-hits.length);
+    else if (token === 'End') move(hits.length);
+    else if (token === 'i') fieldEl?.focus();
   }
 
   async function onFieldKey(event: KeyboardEvent) {

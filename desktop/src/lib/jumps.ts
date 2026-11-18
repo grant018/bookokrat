@@ -62,9 +62,12 @@ export class JumpList {
     return location;
   }
 
-  /** Whether there is an earlier place to go back to. */
-  get canGoBack(): boolean {
-    return this.at === null ? this.entries.length > 0 : this.at > 0;
+  /** Whether `back` from `current` would go anywhere: not when the only
+      place recorded is the one the reader is at. */
+  canGoBack(current: JumpLocation | null): boolean {
+    if (this.at !== null) return this.at > 0;
+    const counted = current && !same(this.entries.at(-1), current) ? 1 : 0;
+    return this.entries.length + counted >= 2;
   }
 
   get canGoForward(): boolean {

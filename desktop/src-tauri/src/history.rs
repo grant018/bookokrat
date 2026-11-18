@@ -49,12 +49,27 @@ fn bookmark_files() -> Vec<(PathBuf, PathBuf)> {
         .collect()
 }
 
+/// The folder a library's bookmarks belong to. Its data folder is named
+/// after it but cannot be turned back into it, so this tries the folders
+/// its books with a full path sit in, and the folders above those.
+fn library_folder(data_dir: &Path, books: &serde_json::Map<String, Value>) -> Option<PathBuf> {
+    let slug = data_dir.file_name()?.to_str()?;
+    let mut tried = std::collections::HashSet::new();
+    books
+        .values()
+        .filter_map(|mark| mark.get("absolute_path").and_then(Value::as_str))
+        .flat_map(|path| Path::new(path).ancestors().skip(1))
+        .filter(|dir| tried.insert(dir.to_path_buf()))
+        .find(|dir| library::library_slug(dir) == slug)
+        .map(Path::to_path_buf)
+}
+
 pub fn list(library_dir: &Path) -> Vec<Entry> {
     let own = library::resolve_library_paths(library_dir)
         .map(|paths| paths.bookmarks_file)
         .ok();
     let mut latest: HashMap<String, Entry> = HashMap::new();
-    for (file, _) in bookmark_files() {
+    for (file, data_dir) in bookmark_files() {
         let books = fs::read_to_string(&file)
             .map_err(|e| e.to_string())
             .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|e| e.to_string()));
@@ -69,22 +84,23 @@ pub fn list(library_dir: &Path) -> Vec<Entry> {
             continue;
         };
         let here = own.as_deref() == Some(file.as_path());
+        let folder = if here {
+            Some(library_dir.to_path_buf())
+        } else {
+            library_folder(&data_dir, books)
+        };
         for (key, mark) in books {
             let Some(last_read) = mark.get("last_read").and_then(Value::as_str) else {
                 continue;
             };
             let text = |name: &str| mark.get(name).and_then(Value::as_str).map(str::to_string);
-            // A book filed by a relative name belongs to its library's
-            // folder, which only the library on screen is known by.
-            let path = text("absolute_path").unwrap_or_else(|| {
-                if here && !Path::new(key).is_absolute() {
-                    library_dir
-                        .join(key.strip_prefix("./").unwrap_or(key))
-                        .to_string_lossy()
-                        .into_owned()
-                } else {
-                    key.clone()
-                }
+            // A book filed by a relative name belongs to its library's folder.
+            let path = text("absolute_path").unwrap_or_else(|| match &folder {
+                Some(folder) if !Path::new(key).is_absolute() => folder
+                    .join(key.strip_prefix("./").unwrap_or(key))
+                    .to_string_lossy()
+                    .into_owned(),
+                _ => key.clone(),
             });
             if latest
                 .get(&path)
@@ -102,7 +118,7 @@ pub fn list(library_dir: &Path) -> Vec<Entry> {
                         .and_then(Value::as_f64)
                         .map(|p| p as f32),
                     last_read: last_read.to_string(),
-                    exists: Path::new(&path).is_file(),
+                    exists: Path::new(&path).is_absolute() && Path::new(&path).is_file(),
                     here,
                     source: file.to_string_lossy().into_owned(),
                     key: key.clone(),
@@ -123,18 +139,8 @@ pub fn forget(source: &str, key: &str) -> Result<(), String> {
     if !known {
         return Err(format!("{source} is not a bookmarks file"));
     }
-    let text = fs::read_to_string(file).map_err(|e| format!("Failed to read {file:?}: {e}"))?;
-    let mut value: Value =
-        serde_json::from_str(&text).map_err(|e| format!("Failed to parse {file:?}: {e}"))?;
-    let books = value
-        .get_mut("books")
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| format!("{file:?} is not a bookmarks file"))?;
-    if books.remove(key).is_none() {
-        return Err(format!("{key} has no bookmark in {file:?}"));
-    }
-    let text = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
-    let partial = file.with_extension(format!("{}.part", std::process::id()));
-    fs::write(&partial, text).map_err(|e| format!("Failed to write {partial:?}: {e}"))?;
-    fs::rename(&partial, file).map_err(|e| format!("Failed to replace {file:?}: {e}"))
+    crate::place::change_bookmarks(file, |books| match books.remove(key) {
+        Some(_) => Ok(()),
+        None => Err(format!("{key} has no bookmark in {file:?}")),
+    })
 }

@@ -1175,7 +1175,7 @@
           {
             label: 'Back',
             keys: keysOf('content', 'jump_backward'),
-            disabled: !jumps.canGoBack,
+            disabled: !jumps.canGoBack(here()),
             run: () => void jumpTo(jumps.back(here())),
           },
           {
@@ -1646,8 +1646,32 @@
               : null;
     if (panel) {
       event.preventDefault();
-      if (token === 'Tab') focus = 'content';
-      else panel.handleKey(token);
+      if (token === 'Tab' && sequence.keys.length === 0) {
+        focus = 'content';
+        return;
+      }
+      // The panel's own bindings come first, then the global ones (help,
+      // the Space sheet), then the keys it takes without a binding. The
+      // lookup picker has none of its own: its keys are the targets' hotkeys.
+      const keys = [...sequence.keys, token];
+      const context = focus === 'notes' ? 'popup.comments' : focus === 'search' ? 'popup.search' : null;
+      const local = context ? keymap.lookup(context, keys) : ({ kind: 'none' } as const);
+      const global = keymap.lookup('global', keys);
+      if (local.kind === 'found' && 'handle' in panel && panel.handle(local.action)) {
+        sequence.clear();
+      } else if (global.kind === 'found') {
+        sequence.clear();
+        run(global.action, event);
+      } else if (local.kind === 'prefix' || global.kind === 'prefix') {
+        sequence.push(token, keys[0] === 'Space');
+      } else if (keys.length > 1) {
+        // A sequence that went nowhere, like `d` then `j`: the last key
+        // starts afresh, as it does in the terminal app. Esc only drops it.
+        sequence.clear();
+        if (token !== 'Esc') onKey(event);
+      } else {
+        panel.handleKey(token);
+      }
       return;
     }
 
@@ -1815,6 +1839,14 @@
   /** What the backend says of its own accord: a watched PDF was read
       again, or an editor asked to see a line of TeX source. */
   async function listenToBackend() {
+    // Started again with a file while already running: open it here.
+    await listen<{ path: string; is_file: boolean }>('open-request', ({ payload }) => {
+      if (payload.is_file) {
+        if (payload.path !== book?.path) void openBook(payload.path);
+      } else if (payload.path.replace(/\/+$/, '') !== libraryDir.replace(/\/+$/, '')) {
+        flash(`The reader is already open on ${libraryDir}; close it to open another library`, true);
+      }
+    });
     await listen<{ pages: [number, number][]; toc: TocEntry[] }>('pdf-reloaded', ({ payload }) => {
       if (!book?.pdf) return;
       book = { ...book, chapter_count: payload.pages.length, toc: payload.toc };

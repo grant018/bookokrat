@@ -21,6 +21,10 @@ const SESSION_FILE: &str = "reader_session.json";
 /// open book are recorded by separate commands that can run at once.
 static SESSION: Mutex<()> = Mutex::new(());
 
+/// Held across each read-change-write of a bookmarks file: places, marks and
+/// forgotten history entries are written by commands that can run at once.
+static BOOKMARKS: Mutex<()> = Mutex::new(());
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Place {
     pub chapter: usize,
@@ -193,38 +197,34 @@ pub fn set_local_mark(
     place: Option<&MarkLocation>,
 ) -> Result<(), String> {
     let (file, library) = bookmarks_file(library_dir, Path::new(book))?;
-    let mut bookmarks = load_bookmarks(&file)?;
-    let books = bookmarks
-        .get_mut("books")
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| format!("{file:?} is not a bookmarks file"))?;
-    let key = bookmark_key(books, &library, book)
-        .ok_or_else(|| format!("{book} has no bookmark to keep a mark in"))?;
-    let fields = books
-        .get_mut(&key)
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| format!("The bookmark for {book} is not an object"))?;
-    let marks = fields.entry("marks").or_insert_with(|| json!({}));
-    if !marks.is_object() {
-        *marks = json!({});
-    }
-    let Some(marks) = marks.as_object_mut() else {
-        return Err(format!("The marks of {book} could not be changed"));
-    };
-    match place {
-        Some(place) => {
-            let value = serde_json::to_value(place).map_err(|e| e.to_string())?;
-            marks.insert(letter.to_string(), value);
+    change_bookmarks(&file, |books| {
+        let key = bookmark_key(books, &library, book)
+            .ok_or_else(|| format!("{book} has no bookmark to keep a mark in"))?;
+        let fields = books
+            .get_mut(&key)
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| format!("The bookmark for {book} is not an object"))?;
+        let marks = fields.entry("marks").or_insert_with(|| json!({}));
+        if !marks.is_object() {
+            *marks = json!({});
         }
-        None => {
-            marks.remove(&letter.to_string());
+        let Some(marks) = marks.as_object_mut() else {
+            return Err(format!("The marks of {book} could not be changed"));
+        };
+        match place {
+            Some(place) => {
+                let value = serde_json::to_value(place).map_err(|e| e.to_string())?;
+                marks.insert(letter.to_string(), value);
+            }
+            None => {
+                marks.remove(&letter.to_string());
+            }
         }
-    }
-    if marks.is_empty() {
-        fields.remove("marks");
-    }
-    let text = serde_json::to_string_pretty(&bookmarks).map_err(|e| e.to_string())?;
-    write_whole(&file, &text)
+        if marks.is_empty() {
+            fields.remove("marks");
+        }
+        Ok(())
+    })
 }
 
 fn global_marks_store() -> Result<GlobalMarks, String> {
@@ -272,6 +272,23 @@ fn load_bookmarks(file: &Path) -> Result<Value, String> {
         return Err(format!("{file:?} is not a bookmarks file"));
     }
     Ok(value)
+}
+
+/// Reads a bookmarks file, lets `change` edit its books and writes it back,
+/// with no other change to a bookmarks file in between.
+pub fn change_bookmarks(
+    file: &Path,
+    change: impl FnOnce(&mut Map<String, Value>) -> Result<(), String>,
+) -> Result<(), String> {
+    let _held = BOOKMARKS.lock().unwrap_or_else(|e| e.into_inner());
+    let mut bookmarks = load_bookmarks(file)?;
+    let books = bookmarks
+        .get_mut("books")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| format!("{file:?} is not a bookmarks file"))?;
+    change(books)?;
+    let text = serde_json::to_string_pretty(&bookmarks).map_err(|e| e.to_string())?;
+    write_whole(file, &text)
 }
 
 /// The key a book is filed under. The terminal app names books relative to
@@ -369,38 +386,34 @@ pub fn remember<R: Read + Seek>(
     progress: f32,
 ) -> Result<(), String> {
     let (file, library) = bookmarks_file(library_dir, Path::new(facts.path))?;
-    let mut bookmarks = load_bookmarks(&file)?;
-    let books = bookmarks
-        .get_mut("books")
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| format!("{file:?} is not a bookmarks file"))?;
-    let key = bookmark_key(books, &library, facts.path).unwrap_or_else(|| facts.path.to_string());
+    change_bookmarks(&file, |books| {
+        let key =
+            bookmark_key(books, &library, facts.path).unwrap_or_else(|| facts.path.to_string());
 
-    let mark = books.entry(key).or_insert_with(|| json!({}));
-    let fields = mark
-        .as_object_mut()
-        .ok_or_else(|| format!("The bookmark for {} is not an object", facts.path))?;
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::AutoSi, true);
-    fields.insert(
-        "chapter_href".into(),
-        json!(chapter_href(doc, place.chapter)),
-    );
-    fields.insert("node_index".into(), json!(place.node));
-    fields.insert("last_read".into(), json!(now));
-    fields.insert("chapter_index".into(), json!(place.chapter));
-    fields.insert("total_chapters".into(), json!(facts.chapter_count));
-    fields.insert("book_progress".into(), json!(progress.clamp(0.0, 1.0)));
-    // The terminal app counts every block in the book for this; a count
-    // left over from it would no longer match the progress written here.
-    fields.remove("total_nodes");
-    fields.insert("book_title".into(), json!(facts.title));
-    if let Some(author) = facts.author {
-        fields.insert("book_author".into(), json!(author));
-    }
-    fields.insert("absolute_path".into(), json!(facts.path));
-
-    let text = serde_json::to_string_pretty(&bookmarks).map_err(|e| e.to_string())?;
-    write_whole(&file, &text)?;
+        let mark = books.entry(key).or_insert_with(|| json!({}));
+        let fields = mark
+            .as_object_mut()
+            .ok_or_else(|| format!("The bookmark for {} is not an object", facts.path))?;
+        let now = Utc::now().to_rfc3339_opts(SecondsFormat::AutoSi, true);
+        fields.insert(
+            "chapter_href".into(),
+            json!(chapter_href(doc, place.chapter)),
+        );
+        fields.insert("node_index".into(), json!(place.node));
+        fields.insert("last_read".into(), json!(now));
+        fields.insert("chapter_index".into(), json!(place.chapter));
+        fields.insert("total_chapters".into(), json!(facts.chapter_count));
+        fields.insert("book_progress".into(), json!(progress.clamp(0.0, 1.0)));
+        // The terminal app counts every block in the book for this; a count
+        // left over from it would no longer match the progress written here.
+        fields.remove("total_nodes");
+        fields.insert("book_title".into(), json!(facts.title));
+        if let Some(author) = facts.author {
+            fields.insert("book_author".into(), json!(author));
+        }
+        fields.insert("absolute_path".into(), json!(facts.path));
+        Ok(())
+    })?;
 
     let _held = SESSION.lock().unwrap_or_else(|e| e.into_inner());
     let mut session = load_session();
@@ -471,41 +484,37 @@ pub fn remember_paged(
     place: &PagedPlace,
 ) -> Result<(), String> {
     let (file, library) = bookmarks_file(library_dir, Path::new(facts.path))?;
-    let mut bookmarks = load_bookmarks(&file)?;
-    let books = bookmarks
-        .get_mut("books")
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| format!("{file:?} is not a bookmarks file"))?;
-    let key = bookmark_key(books, &library, facts.path).unwrap_or_else(|| facts.path.to_string());
+    change_bookmarks(&file, |books| {
+        let key =
+            bookmark_key(books, &library, facts.path).unwrap_or_else(|| facts.path.to_string());
 
-    let mark = books.entry(key).or_insert_with(|| json!({}));
-    let fields = mark
-        .as_object_mut()
-        .ok_or_else(|| format!("The bookmark for {} is not an object", facts.path))?;
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::AutoSi, true);
-    let pages = facts.chapter_count.max(1);
-    fields.insert("chapter_href".into(), json!(place.page.to_string()));
-    fields.insert("last_read".into(), json!(now));
-    fields.insert("total_chapters".into(), json!(pages));
-    fields.insert("pdf_page".into(), json!(place.page));
-    fields.insert(
-        "book_progress".into(),
-        json!(((place.page + 1) as f32 / pages as f32).clamp(0.0, 1.0)),
-    );
-    if let Some(themed) = place.themed {
-        fields.insert("pdf_themed_rendering".into(), json!(themed));
-    }
-    if let Some(tint) = place.tint_images {
-        fields.insert("pdf_invert_images".into(), json!(tint));
-    }
-    fields.insert("book_title".into(), json!(facts.title));
-    if let Some(author) = facts.author {
-        fields.insert("book_author".into(), json!(author));
-    }
-    fields.insert("absolute_path".into(), json!(facts.path));
-
-    let text = serde_json::to_string_pretty(&bookmarks).map_err(|e| e.to_string())?;
-    write_whole(&file, &text)?;
+        let mark = books.entry(key).or_insert_with(|| json!({}));
+        let fields = mark
+            .as_object_mut()
+            .ok_or_else(|| format!("The bookmark for {} is not an object", facts.path))?;
+        let now = Utc::now().to_rfc3339_opts(SecondsFormat::AutoSi, true);
+        let pages = facts.chapter_count.max(1);
+        fields.insert("chapter_href".into(), json!(place.page.to_string()));
+        fields.insert("last_read".into(), json!(now));
+        fields.insert("total_chapters".into(), json!(pages));
+        fields.insert("pdf_page".into(), json!(place.page));
+        fields.insert(
+            "book_progress".into(),
+            json!(((place.page + 1) as f32 / pages as f32).clamp(0.0, 1.0)),
+        );
+        if let Some(themed) = place.themed {
+            fields.insert("pdf_themed_rendering".into(), json!(themed));
+        }
+        if let Some(tint) = place.tint_images {
+            fields.insert("pdf_invert_images".into(), json!(tint));
+        }
+        fields.insert("book_title".into(), json!(facts.title));
+        if let Some(author) = facts.author {
+            fields.insert("book_author".into(), json!(author));
+        }
+        fields.insert("absolute_path".into(), json!(facts.path));
+        Ok(())
+    })?;
 
     let _held = SESSION.lock().unwrap_or_else(|e| e.into_inner());
     let mut session = load_session();
