@@ -1839,14 +1839,8 @@
   /** What the backend says of its own accord: a watched PDF was read
       again, or an editor asked to see a line of TeX source. */
   async function listenToBackend() {
-    // Started again with a file while already running: open it here.
-    await listen<{ path: string; is_file: boolean }>('open-request', ({ payload }) => {
-      if (payload.is_file) {
-        if (payload.path !== book?.path) void openBook(payload.path);
-      } else if (payload.path.replace(/\/+$/, '') !== libraryDir.replace(/\/+$/, '')) {
-        flash(`The reader is already open on ${libraryDir}; close it to open another library`, true);
-      }
-    });
+    // Started again with a file, or a book opened from the Finder.
+    await listen('open-request', () => void takeOpenRequest());
     await listen<{ pages: [number, number][]; toc: TocEntry[] }>('pdf-reloaded', ({ payload }) => {
       if (!book?.pdf) return;
       book = { ...book, chapter_count: payload.pages.length, toc: payload.toc };
@@ -1869,6 +1863,17 @@
     );
   }
 
+  /** Opens what the reader was asked to open while running, if anything. */
+  async function takeOpenRequest() {
+    const request = await api.takeOpenRequest();
+    if (!request) return;
+    if (request.is_file) {
+      if (request.path !== book?.path) await openBook(request.path);
+    } else if (request.path.replace(/\/+$/, '') !== libraryDir.replace(/\/+$/, '')) {
+      flash(`The reader is already open on ${libraryDir}; close it to open another library`, true);
+    }
+  }
+
   async function start() {
     try {
       prefs.onerror = (text) => flash(text, true);
@@ -1883,7 +1888,10 @@
       await listenToBackend();
       books = await api.listBooks();
       void loadRecency();
-      if (launch.open_path) await openBook(launch.open_path);
+      // A book opened from the Finder can arrive before the page listens.
+      const asked = await api.takeOpenRequest();
+      const first = asked?.is_file ? asked.path : launch.open_path;
+      if (first) await openBook(first);
       if (!book) view = 'library';
       if (launch.perf) await runPerf();
       if (launch.script) await runScript(launch.script as ScriptStep[]);

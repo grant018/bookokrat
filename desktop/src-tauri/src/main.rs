@@ -1868,6 +1868,53 @@ fn quit(app: AppHandle) {
     app.exit(0);
 }
 
+/// A file the reader was asked to open while running, or as it started.
+#[tauri::command]
+fn take_open_request() -> Option<instance::OpenRequest> {
+    instance::take()
+}
+
+/// Has the page write down the place in the book and any setting still
+/// waiting to be saved, then quit. A page that does not answer is not
+/// waited for long.
+fn ask_page_to_quit(app: &AppHandle) {
+    if let Err(e) = app.emit("close-requested", ()) {
+        log::error!("Failed to tell the page the reader is closing: {e}");
+        app.exit(0);
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(CLOSE_GRACE);
+        app.exit(0);
+    });
+}
+
+const QUIT_MENU_ID: &str = "quit";
+
+/// The standard menu, with its Quit replaced by one that saves first: the
+/// standard one ends the app at once, with the last place unsaved. Only
+/// macOS has a Quit in the menu.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn menu_with_saving_quit(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{Menu, MenuItem, MenuItemKind};
+    let menu = Menu::default(app)?;
+    if let Some(MenuItemKind::Submenu(app_menu)) = menu.items()?.into_iter().next() {
+        if let Some(MenuItemKind::Predefined(standard)) = app_menu.items()?.into_iter().last() {
+            app_menu.remove(&standard)?;
+        }
+        let name = &app.package_info().name;
+        app_menu.append(&MenuItem::with_id(
+            app,
+            QUIT_MENU_ID,
+            format!("Quit {name}"),
+            true,
+            Some("CmdOrCtrl+Q"),
+        )?)?;
+    }
+    Ok(menu)
+}
+
 #[tauri::command]
 fn perf_report(
     app: AppHandle,
@@ -2509,7 +2556,16 @@ fn main() {
     init_logging();
     let socket = instance.as_ref().map(|i| i.socket.clone());
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(menu_with_saving_quit)
+        .on_menu_event(|app, event| {
+            if event.id() == QUIT_MENU_ID {
+                ask_page_to_quit(app);
+            }
+        });
+    let app = builder
         .manage(AppState::from_env())
         .setup(move |app| {
             if let Some(socket) = socket {
@@ -2622,31 +2678,34 @@ fn main() {
             lookup_cancel,
             copy_text,
             quit,
+            take_open_request,
             perf_report
         ])
         .on_window_event(|window, event| match event {
-            // The page writes down the place in the book and any setting
-            // still waiting to be saved, then quits. A page that does not
-            // answer is not waited for long.
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
-                let app = window.app_handle().clone();
-                if let Err(e) = window.emit("close-requested", ()) {
-                    log::error!("Failed to tell the page the window is closing: {e}");
-                    app.exit(0);
-                    return;
-                }
-                std::thread::spawn(move || {
-                    std::thread::sleep(CLOSE_GRACE);
-                    app.exit(0);
-                });
+                ask_page_to_quit(window.app_handle());
             }
             tauri::WindowEvent::Destroyed => {
                 window.state::<AppState>().lookups.cancel_all();
             }
             _ => {}
         })
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("failed to start the reader");
+    app.run(|app, event| {
+        // A book opened from the Finder, or dropped on the Dock icon.
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        if let tauri::RunEvent::Opened { urls } = event {
+            for url in urls {
+                match url.to_file_path() {
+                    Ok(path) => instance::deliver(app, Some(path)),
+                    Err(()) => log::error!("Asked to open {url}, which is not a file"),
+                }
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        let _ = (app, event);
+    });
     drop(instance);
 }

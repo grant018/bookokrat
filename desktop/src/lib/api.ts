@@ -306,6 +306,7 @@ export const api = {
   /** Reads keybindings.toml again; resolves to what is wrong with it. */
   keymapProblems: () => invoke<string[]>('keymap_problems'),
   keymap: () => invoke<Record<string, Binding[]>>('keymap'),
+  takeOpenRequest: () => invoke<{ path: string; is_file: boolean } | null>('take_open_request'),
   openExternal: (url: string) => invoke<void>('open_external', { url }),
   perfReport: (report: unknown) => invoke<void>('perf_report', { report }),
   appearance: () => invoke<Appearance>('appearance'),

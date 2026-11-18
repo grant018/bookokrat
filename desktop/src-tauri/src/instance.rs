@@ -3,17 +3,55 @@
 //! the state folder, and a later start hands the file it was given to that
 //! one and exits. Test runs keep their own state folder, so they never meet
 //! a reader started by hand.
+//!
+//! macOS starts no second copy: it asks the running app to open the file
+//! (a book opened from the Finder), which arrives here the same way.
 
 use serde::Serialize;
 use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 
-/// What a later start asked the running reader to open.
+/// What a later start, or the system, asked the running reader to open.
 #[derive(Clone, Serialize)]
 pub struct OpenRequest {
     pub path: String,
     pub is_file: bool,
+}
+
+/// The latest request not yet taken by the page. It is kept rather than
+/// only announced, since one can come before the page is listening: macOS
+/// sends the file a book was opened with just after the app starts.
+static PENDING: Mutex<Option<OpenRequest>> = Mutex::new(None);
+
+/// The request waiting for the page, if any; it is taken only once.
+pub fn take() -> Option<OpenRequest> {
+    PENDING.lock().unwrap_or_else(|e| e.into_inner()).take()
+}
+
+/// Brings the window forward and, given a path, keeps it for the page and
+/// tells the page to take it.
+pub fn deliver(app: &AppHandle, path: Option<PathBuf>) {
+    if let Some(window) = app.webview_windows().into_values().next() {
+        let _ = window.unminimize();
+        let _ = window.show();
+        if let Err(e) = window.set_focus() {
+            log::error!("Failed to bring the reader forward: {e}");
+        }
+    }
+    let Some(path) = path else {
+        return;
+    };
+    log::info!("Asked to open {path:?}");
+    let request = OpenRequest {
+        is_file: path.is_file(),
+        path: path.to_string_lossy().into_owned(),
+    };
+    *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some(request);
+    if let Err(e) = app.emit("open-request", ()) {
+        log::error!("Failed to pass an open request to the page: {e}");
+    }
 }
 
 /// Held for as long as this reader runs.
@@ -122,24 +160,7 @@ pub fn listen(socket: PathBuf, app: AppHandle) {
                 log::error!("Failed to read what a later start asked for: {e}");
                 continue;
             }
-            if let Some(window) = app.webview_windows().into_values().next() {
-                let _ = window.unminimize();
-                let _ = window.show();
-                if let Err(e) = window.set_focus() {
-                    log::error!("Failed to bring the reader forward: {e}");
-                }
-            }
-            if text.is_empty() {
-                continue;
-            }
-            log::info!("A later start asked to open {text}");
-            let request = OpenRequest {
-                is_file: Path::new(&text).is_file(),
-                path: text,
-            };
-            if let Err(e) = app.emit("open-request", request) {
-                log::error!("Failed to pass an open request to the page: {e}");
-            }
+            deliver(&app, (!text.is_empty()).then(|| PathBuf::from(text)));
         }
     });
 }

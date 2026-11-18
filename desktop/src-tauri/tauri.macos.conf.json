@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": ["icons/icon.icns", "icons/icon.png"],
+    "category": "Book",
+    "shortDescription": "A reader for EPUB, PDF and DjVu",
+    "fileAssociations": [
+      {
+        "ext": ["epub"],
+        "contentTypes": ["org.idpf.epub-container"],
+        "name": "EPUB Book",
+        "mimeType": "application/epub+zip",
+        "role": "Viewer",
+        "rank": "Default"
+      },
+      {
+        "ext": ["djvu", "djv"],
+        "name": "DjVu Document",
+        "mimeType": "image/vnd.djvu",
+        "role": "Viewer",
+        "rank": "Default"
+      },
+      {
+        "ext": ["pdf"],
+        "contentTypes": ["com.adobe.pdf"],
+        "name": "PDF Document",
+        "mimeType": "application/pdf",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ],
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    }
+  }
+}
